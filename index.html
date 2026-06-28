@@ -523,11 +523,14 @@ function drawTile(tile, idx, pos){
   const pad=2.5, x=pos.x+pad, y=pos.y+pad, w=CELL-pad*2, h=CELL-pad*2;
   ctx.save();
   const owner = tile.type==="property" ? state.tiles[idx].owner : null;
+  
+  // Vẽ viền sáng (glow) nếu đất đã có chủ
   if(owner!==null){
     roundRect(x-2,y-2,w+4,h+4,10);
     ctx.shadowColor=state.players[owner].color; ctx.shadowBlur=14;
     ctx.fillStyle=state.players[owner].color; ctx.fill(); ctx.shadowBlur=0;
   }
+  
   roundRect(x,y,w,h,9);
   let grad;
   if(tile.type==="property"){ const [c1,c2]=LAND_BG[tile.landType]; grad=grd(x,y,h,c1,c2); }
@@ -537,8 +540,12 @@ function drawTile(tile, idx, pos){
   else if(tile.type==="state"){ grad=grd(x,y,h,"#7fd7e0","#1e93a3"); }
   else { grad=grd(x,y,h,"#ccc","#999"); }
   ctx.fillStyle=grad; ctx.fill();
+  
+  // Hiệu ứng làm tối nền đất nếu đã có chủ
   if(owner!==null){ ctx.fillStyle="rgba(0,0,0,.18)"; ctx.fill(); }
   ctx.strokeStyle="rgba(255,255,255,.5)"; ctx.lineWidth=1.4; ctx.stroke();
+  
+  // Vẽ Icon
   ctx.font=`${Math.max(13,CELL*0.3)}px serif`;
   ctx.textAlign="center"; ctx.textBaseline="middle";
   let icon="•";
@@ -548,17 +555,17 @@ function drawTile(tile, idx, pos){
   if(tile.type==="start") icon="🚩";
   if(tile.type==="state") icon="⚡";
   ctx.fillText(icon, x+w/2, y+h*0.38);
+  
+  // Vẽ Tên ô đất
   const labelY=y+h*0.78;
   ctx.font=`700 ${Math.max(8,CELL*0.135)}px 'Nunito', sans-serif`;
   const tw=ctx.measureText(tile.name).width;
   roundRect(x+w/2-tw/2-4, labelY-h*0.13, tw+8, h*0.22, 5);
   ctx.fillStyle="rgba(255,255,255,.88)"; ctx.fill();
   ctx.fillStyle="#2d2150"; ctx.fillText(tile.name, x+w/2, labelY);
-  if(owner!==null){
-    ctx.beginPath(); ctx.fillStyle=state.players[owner].color;
-    ctx.arc(x+w-8, y+8, 6, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.stroke();
-  }
+  
+  // ĐÃ XÓA: Đoạn code vẽ dấu chấm của owner ở góc dưới cùng bên phải
+  
   ctx.restore();
 }
 function drawTokens(){
@@ -568,15 +575,30 @@ function drawTokens(){
     const pos=displayedPos[p.id]!==undefined?displayedPos[p.id]:p.position;
     byTile[pos]=byTile[pos]||[]; byTile[pos].push(p);
   });
+  
   Object.keys(byTile).forEach(posIdx=>{
-    const pos=positions[posIdx];
-    byTile[posIdx].forEach((p,i)=>{
-      const ox=(i%3)*(CELL*0.22), oy=Math.floor(i/3)*(CELL*0.22);
-      const cx=pos.x+CELL*0.18+ox, cy=pos.y+CELL*0.18+oy;
+    const pos = positions[posIdx];
+    const tokensOnTile = byTile[posIdx];
+    const total = tokensOnTile.length;
+    
+    tokensOnTile.forEach((p, i)=>{
+      // Tọa độ mặc định là chính giữa tâm ô đất
+      let cx = pos.x + CELL / 2;
+      let cy = pos.y + CELL / 2;
+      
+      // Nếu có từ 2 người trở lên ở cùng ô, tự động xếp tỏa ra xung quanh tâm ô để tránh đè chồng lên nhau
+      if (total > 1) {
+        const angle = (i * 2 * Math.PI) / total - Math.PI / 2; // Bắt đầu từ góc 12 giờ
+        const radius = CELL * 0.16; // Khoảng cách giãn ra từ tâm ô
+        cx += Math.cos(angle) * radius;
+        cy += Math.sin(angle) * radius;
+      }
+      
       ctx.save();
+      // Vẽ bóng đổ và viền trắng cho dấu chấm (Token) thêm sắc nét
       ctx.shadowColor="rgba(0,0,0,.4)"; ctx.shadowBlur=4; ctx.shadowOffsetY=2;
       ctx.beginPath(); ctx.fillStyle=p.color;
-      ctx.arc(cx,cy,CELL*0.11,0,Math.PI*2); ctx.fill();
+      ctx.arc(cx, cy, CELL * 0.11, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur=0; ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
       ctx.restore();
     });
