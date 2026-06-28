@@ -39,6 +39,7 @@
   .modal-box h3{margin-top:0; color:var(--accent);}
   .row-flex{display:flex; gap:8px;}
   .row-flex>*{flex:1;}
+  table{width:100%;} th,td{border:1px solid #334155; padding:6px 8px; text-align:left; font-size:12px;} th{background:#334155;}
 </style>
 </head>
 <body>
@@ -76,6 +77,13 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="resultModal">
+  <div class="modal-box" style="width:520px;">
+    <h3>🏆 Kết quả cuối game</h3>
+    <table id="resultTable" style="width:100%; border-collapse:collapse; font-size:13px;"></table>
+  </div>
+</div>
+
 <div class="modal-overlay" id="buyModal">
   <div class="modal-box">
     <h3 id="buyTitle">Mua đất?</h3>
@@ -100,9 +108,13 @@
 </div>
 
 <script>
+const params = new URLSearchParams(location.search);
+const isDisplayMode = params.get("mode") === "display"; // ?mode=display = máy chiếu, chỉ xem
+
 const LOBBY_KEY = "ctdq_my_slot"; // localStorage: nhớ đội của trình duyệt này
 let myPlayerId = null;
 let selectedSlotForClaim = null;
+let resultShown = false;
 
 let state = null;
 const canvas = document.getElementById("boardCanvas");
@@ -144,6 +156,11 @@ function tryAutoRejoin(){
 
 function renderLobby(){
   const lobbyScreen = document.getElementById("lobbyScreen");
+  if(isDisplayMode){
+    lobbyScreen.classList.remove("show");
+    document.getElementById("myTagName").textContent = "📽️ Màn hình trình chiếu";
+    return;
+  }
   if(myPlayerId !== null){
     lobbyScreen.classList.remove("show");
     document.getElementById("myTagName").textContent = state.players[myPlayerId].name;
@@ -221,6 +238,7 @@ function renderAll(){
   renderPlayers();
   renderLog();
   updateRollButton();
+  renderResultModal();
 }
 
 function drawTile(tile, idx, pos){
@@ -300,6 +318,7 @@ function renderLog(){
 
 function updateRollButton(){
   const btn = document.getElementById("btnRoll");
+  if(isDisplayMode){ btn.style.display = "none"; return; }
   if(!state.turnOrderLocked || state.gameEnded){ btn.disabled = true; return; }
   const curId = currentPlayerId(state);
   const isMyTurn = myPlayerId === curId;
@@ -309,6 +328,23 @@ function updateRollButton(){
   if(isMyTurn && state.players[curId].jailTurns>0){
     openJailModal();
   }
+}
+
+function renderResultModal(){
+  const modal = document.getElementById("resultModal");
+  if(!state.gameEnded){ modal.classList.remove("show"); resultShown=false; return; }
+  modal.classList.add("show");
+  if(resultShown) return; // chỉ build lại bảng 1 lần khi vừa chuyển sang gameEnded, tránh giật khi re-render liên tục
+  resultShown = true;
+  const ranked = [...state.players].filter(p=>p.status!=="eliminated").sort((a,b)=>totalAssets(state,b)-totalAssets(state,a));
+  let html = `<tr><th>#</th><th>Đội</th><th>Tiền</th><th>Giá trị đất</th><th>Tổng TS</th><th>Trạng thái</th></tr>`;
+  ranked.forEach((p,i)=>{
+    const propVal = p.properties.reduce((sum,idx)=>sum+RAW_TILES[idx][3],0);
+    html += `<tr><td>${i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1}</td><td>${p.name}</td><td>${p.money.toLocaleString()}$</td>
+      <td>${propVal.toLocaleString()}$</td><td><b>${totalAssets(state,p).toLocaleString()}$</b></td>
+      <td>${p.status==="shareholder"?"Cổ đông của "+state.players[p.shareholderOf].name:"Độc lập"}</td></tr>`;
+  });
+  document.getElementById("resultTable").innerHTML = html;
 }
 
 function nextTurnIndex(){
