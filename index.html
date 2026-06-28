@@ -312,11 +312,56 @@ function runRemoteSequence(prevState){
   // 1. Show dice on board for 4 s
   showDiceOnBoard(d1, d2, ()=>{
     // 2. Animate token
-    animateTokenMove(movedId, from, to, ()=>{
-      sequenceLocked = false;
-      renderAll();       // full refresh once everything is done
-    });
-  });
+   function animateTokenMove(playerId, from, to, onDone){
+  if(from === to){ onDone && onDone(); return; }
+
+  // Tính các bước nhảy
+  const path = [];
+  let steps = (to - from + TOTAL_TILES) % TOTAL_TILES;
+  for(let i = 1; i <= steps; i++){
+    path.push((from + i) % TOTAL_TILES);
+  }
+
+  let stepIdx = 0;
+  const JUMP_TIME = 250; // Thời gian cho 1 cú nhảy
+
+  function jump() {
+    if(stepIdx >= path.length){
+      onDone && onDone();
+      return;
+    }
+
+    const targetPos = positions[path[stepIdx]];
+    const startPos = positions[stepIdx === 0 ? from : path[stepIdx - 1]];
+    
+    let start = null;
+    function frame(timestamp) {
+      if(!start) start = timestamp;
+      const progress = Math.min((timestamp - start) / JUMP_TIME, 1);
+      
+      // Công thức tạo độ cao (nhảy lên)
+      // Hàm sin giúp quân cờ bay theo hình cung: lên cao rồi hạ xuống
+      const height = Math.sin(progress * Math.PI) * 30; 
+      
+      // Nội suy vị trí X, Y (cộng thêm chiều cao nhảy)
+      const curX = startPos.x + (targetPos.x - startPos.x) * progress;
+      const curY = (startPos.y + (targetPos.y - startPos.y) * progress) - height;
+
+      // Lưu vào displayedPos
+      displayedPos[playerId] = { x: curX, y: curY, isInterpolated: true };
+      renderBoard();
+
+      if(progress < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        displayedPos[playerId] = path[stepIdx]; // Cố định vào ô khi nhảy xong
+        stepIdx++;
+        setTimeout(jump, 50); // Nghỉ một chút giữa các bước nhảy
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+  jump();
 }
 
 function tryAutoRejoin(){
