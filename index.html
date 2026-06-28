@@ -839,16 +839,6 @@ function resolveTile(s, player, idx){
   }
 }
 
-/* Open the right modal after token arrives */
-function openTileModal(idx){
-  if(myPlayerId !== currentPlayerId(state)) return;
-  const tile=tileInfo(idx);
-  if(tile.type==="property" && state.tiles[idx].owner === null){
-    window.__pendingBuy={idx};
-    openBuyModal(idx);
-  }
-}
-
 function advanceTurn(s){ s.currentTurnPos = nextTurnIndexFor(s); }
 
 function nextTurnIndexFor(s){
@@ -860,7 +850,6 @@ function nextTurnIndexFor(s){
   return pos;
 }
 
-// Gọi init khi trang load
 init();
 </script>
 </body>
