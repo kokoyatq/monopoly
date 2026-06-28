@@ -625,31 +625,53 @@ function drawTile(tile, idx, pos){
 
 function drawTokens(){
   const byTile = {};
-  state.players.forEach(p=>{
-    // Chỉ vẽ những người đã tham gia
-    if(!p.joined || p.status==="eliminated" || p.status==="shareholder") return;
-    const pos = displayedPos[p.id]!==undefined ? displayedPos[p.id] : p.position;
-    byTile[pos]=byTile[pos]||[]; byTile[pos].push(p);
+  
+  state.players.forEach(p => {
+    // Luôn xác định vị trí, dù chưa joined hay đã joined
+    // Nếu p.joined là false, ta vẫn coi nó ở START_TILE_INDEX để hiện thị chỗ trống
+    const pos = (displayedPos[p.id] !== undefined) ? displayedPos[p.id] : p.position;
+    
+    // Nếu p.status là shareholder, ta không vẽ quân cờ trên bàn cờ nữa
+    if (p.status === "shareholder") return;
+
+    byTile[pos] = byTile[pos] || [];
+    byTile[pos].push(p);
   });
-  Object.keys(byTile).forEach(posIdx=>{
-    const pos=positions[posIdx];
-    byTile[posIdx].forEach((p,i)=>{
-      const ox=(i%3)*(CELL*0.22), oy=Math.floor(i/3)*(CELL*0.22);
-      const cx=pos.x+CELL*0.18+ox, cy=pos.y+CELL*0.18+oy;
+
+  Object.keys(byTile).forEach(posIdx => {
+    const pos = positions[posIdx];
+    if (!pos) return;
+
+    byTile[posIdx].forEach((p, i) => {
+      // Tính toán tọa độ hiển thị
+      let cx, cy;
+      if (typeof pos === 'object' && pos.isInterpolated) {
+        cx = pos.x + CELL * 0.18;
+        cy = pos.y + CELL * 0.18;
+      } else {
+        const ox = (i % 3) * (CELL * 0.22);
+        const oy = Math.floor(i / 3) * (CELL * 0.22);
+        cx = pos.x + CELL * 0.18 + ox;
+        cy = pos.y + CELL * 0.18 + oy;
+      }
       
       ctx.save();
-      // Vẽ chấm tròn màu
-      ctx.beginPath(); ctx.fillStyle=p.color;
-      ctx.arc(cx,cy,CELL*0.14,0,Math.PI*2); ctx.fill();
-      ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
+      // Vẽ chấm tròn
+      ctx.beginPath(); 
+      ctx.fillStyle = p.color;
+      ctx.arc(cx, cy, CELL * 0.14, 0, Math.PI * 2); 
+      ctx.fill();
+      ctx.strokeStyle = "#fff"; 
+      ctx.lineWidth = 2; 
+      ctx.stroke();
       
-      // CHỈ VIẾT TÊN KHI NGƯỜI CHƠI ĐÃ JOINED
-      if(p.joined){
-        ctx.fillStyle="#fff";
-        ctx.font=`700 ${CELL*0.12}px Arial`;
-        ctx.textAlign="center"; ctx.textBaseline="middle";
-        // Lấy 2 ký tự, nếu tên là "(Trống)" thì nó sẽ không hiện vì p.joined là false
-        ctx.fillText(p.name.substring(0,2).toUpperCase(), cx, cy);
+      // Chỉ vẽ chữ nếu người chơi đã joined
+      if (p.joined) {
+        ctx.fillStyle = "#fff";
+        ctx.font = `700 ${CELL * 0.12}px Arial`;
+        ctx.textAlign = "center"; 
+        ctx.textBaseline = "middle";
+        ctx.fillText(p.name.substring(0, 2).toUpperCase(), cx, cy);
       }
       ctx.restore();
     });
