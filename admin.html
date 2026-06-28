@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Admin Panel - Từ Cạnh Tranh Đến Độc Quyền</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="./game-data.js"></script>
+<script src="./supabase-client.js"></script>
+<style>
+  :root{ --bg:#0f172a; --panel:#1e293b; --accent:#fbbf24; --text:#e2e8f0; --good:#22c55e; --bad:#ef4444; }
+  *{box-sizing:border-box; font-family:'Segoe UI',Arial,sans-serif;}
+  body{margin:0; background:var(--bg); color:var(--text); padding:18px;}
+  h1{color:var(--accent); font-size:20px;}
+  h3{color:var(--accent); font-size:15px; margin-top:22px;}
+  .row-flex{display:flex; gap:10px; flex-wrap:wrap; margin:8px 0;}
+  .row-flex>*{flex:1; min-width:160px;}
+  button{cursor:pointer; border:none; border-radius:6px; padding:9px; font-size:13px; font-weight:bold;}
+  button:disabled{opacity:.35; cursor:not-allowed;}
+  .btn-main{background:var(--accent); color:#1e293b;}
+  .btn-good{background:var(--good); color:#fff;}
+  .btn-bad{background:var(--bad); color:#fff;}
+  .btn-admin{background:#7c3aed; color:#fff;}
+  .btn-skip{background:#475569; color:#fff;}
+  table{width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;}
+  th,td{border:1px solid #334155; padding:6px 8px; text-align:left;}
+  th{background:#334155;}
+  input,select{padding:6px; border-radius:5px; border:1px solid #334155; background:#0b1220; color:#fff; width:100%;}
+  .panel{background:var(--panel); border-radius:10px; padding:14px; margin-bottom:14px;}
+  .tag{display:inline-block; font-size:10px; padding:1px 5px; border-radius:4px; margin-left:4px;}
+  .tag.weak{background:#7f1d1d;} .tag.mono{background:#7c2d12;} .tag.jail{background:#1e3a8a;}
+  #alerts .alert{background:#7f1d1d; padding:8px; border-radius:6px; font-size:12px; display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;}
+  #status{font-size:12px; opacity:.7;}
+</style>
+</head>
+<body>
+
+<h1>🛠️ Admin Panel — MC điều khiển</h1>
+<p id="status">Đang kết nối Supabase...</p>
+
+<div class="panel">
+  <h3>🚪 Phòng chờ — đội đã tham gia</h3>
+  <div id="lobbyStatus"></div>
+</div>
+
+<div class="panel">
+  <h3>⏱ Trạng thái chung</h3>
+  <div id="phaseInfo"></div>
+  <div class="row-flex">
+    <button class="btn-main" id="btnRandomOrder">🎲 Random thứ tự đi (1 lần, sẽ khóa)</button>
+    <button class="btn-main" id="btnNextPhase">▶️ Chuyển giai đoạn tiếp theo</button>
+    <button class="btn-bad" id="btnAntiTrust">⚖️ Áp thuế chống độc quyền (GĐ4)</button>
+    <button class="btn-bad" id="btnEndGame">🏁 Kết thúc & Xếp hạng</button>
+  </div>
+</div>
+
+<div class="panel" id="priorityPanel" style="display:none;">
+  <h3>🥇 Ưu tiên đi trước (chỉ 1 đội, 1 lần duy nhất, 50$)</h3>
+  <div class="row-flex">
+    <select id="prioritySelect"><option value="">-- Không đội nào --</option></select>
+    <button class="btn-main" id="btnConfirmPriority">Xác nhận</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>⚠️ Cảnh báo</h3>
+  <div id="alerts"><i>Không có cảnh báo nào.</i></div>
+</div>
+
+<div class="panel">
+  <h3>📊 Bảng đội (sắp xếp theo tổng tài sản)</h3>
+  <table id="playerTable"></table>
+</div>
+
+<div class="panel">
+  <h3>🤝 M&A — Thu mua doanh nghiệp yếu</h3>
+  <div class="row-flex">
+    <select id="maBuyer"></select>
+    <select id="maSeller"></select>
+    <input type="number" id="maPrice" placeholder="Giá thoả thuận ($)"/>
+    <button class="btn-good" id="btnMAConfirm">Xác nhận giao dịch</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>✏️ Sửa tay số dư</h3>
+  <div class="row-flex">
+    <select id="editPlayerSelect"></select>
+    <input type="number" id="editMoneyInput" placeholder="Số tiền mới"/>
+    <button class="btn-main" id="btnEditMoney">Cập nhật</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>📜 Log</h3>
+  <div id="logBox" style="max-height:200px; overflow-y:auto; font-size:12px;"></div>
+</div>
+
+<div class="panel" id="resultPanel" style="display:none;">
+  <h3>🏆 Kết quả cuối game</h3>
+  <table id="resultTable"></table>
+</div>
+
+<script>
+let state = null;
+
+async function init(){
+  state = await loadState();
+  if(!state || !state.initialized){
+    state = createInitialState();
+    await saveState(state);
+  }
+  render();
+  subscribeToChanges((newState)=>{ state = newState; render(); });
+  document.getElementById("status").textContent = "✅ Đã kết nối — đồng bộ real-time.";
+  setInterval(tick, 1000);
+}
+
+async function tick(){
+  // chỉ tăng giờ nếu game đã bắt đầu (đã khóa thứ tự) và chưa kết thúc
+  if(state && state.turnOrderLocked && !state.gameEnded){
+    await mutateState(s=>{ s.elapsedSec++; });
+  }
+}
+
+function fmtTime(s){
+  const m = Math.floor(s/60).toString().padStart(2,"0");
+  const sec = (s%60).toString().padStart(2,"0");
+  return m+":"+sec;
+}
+
+function render(){
+  if(!state) return;
+  renderLobbyStatus();
+  renderPhaseInfo();
+  renderPriorityPanel();
+  renderAlerts();
+  renderPlayerTable();
+  renderSelects();
+  renderLog();
+}
+
+function renderLobbyStatus(){
+  const wrap = document.getElementById("lobbyStatus");
+  const joined = joinedPlayers(state);
+  wrap.innerHTML = `<p>Đã tham gia: <b>${joined.length}/${NUM_PLAYERS}</b></p>` +
+    state.players.map(p=>`<span style="display:inline-block; margin:3px 6px; padding:3px 8px; border-radius:5px; background:${p.joined?'#14532d':'#334155'};">
+      ${p.joined?'✅':'⬜'} ${p.name}
+    </span>`).join("");
+}
+
+function renderPhaseInfo(){
+  const suggestIdx = state.phase;
+  const suggested = suggestIdx < PHASE_SUGGEST_SECONDS.length && state.elapsedSec >= PHASE_SUGGEST_SECONDS[suggestIdx];
+  document.getElementById("phaseInfo").innerHTML = `
+    ⏱ <b>${fmtTime(state.elapsedSec)}</b> &nbsp; | &nbsp;
+    Giai đoạn: <b>${PHASE_NAMES[state.phase]}</b> &nbsp;
+    ${suggested ? `<span style="color:var(--accent)">⏰ Gợi ý: nên chuyển giai đoạn tiếp theo</span>` : ""} &nbsp; | &nbsp;
+    Thứ tự đi: ${state.turnOrderLocked ? state.turnOrder.map(id=>state.players[id].name).join(" → ") : "<i>chưa random</i>"}
+    ${state.turnOrderLocked ? `&nbsp; | &nbsp; Đang đi: <b>${state.players[currentPlayerId(state)].name}</b>` : ""}
+  `;
+  document.getElementById("btnRandomOrder").disabled = state.turnOrderLocked;
+}
+
+function renderPriorityPanel(){
+  const panel = document.getElementById("priorityPanel");
+  if(state.turnOrderLocked && !state.priorityUsed){
+    panel.style.display = "block";
+  } else {
+    panel.style.display = "none";
+  }
+}
+
+function renderAlerts(){
+  const wrap = document.getElementById("alerts");
+  const list = state.players.filter(p=>p.status==="active" && p.money<0);
+  if(list.length===0){ wrap.innerHTML = "<i>Không có cảnh báo nào.</i>"; return; }
+  wrap.innerHTML = "";
+  list.forEach(p=>{
+    const div = document.createElement("div");
+    div.className = "alert";
+    div.innerHTML = `<span>⚠️ ${p.name} âm tiền (${p.money.toLocaleString()}$) — không đủ trả phí/thuế!</span>`;
+    const btn = document.createElement("button");
+    btn.className = "btn-bad"; btn.style.flex="0"; btn.textContent="Xác nhận loại";
+    btn.onclick = async ()=>{
+      await mutateState(s=>{
+        const pl = s.players[p.id];
+        pl.status="eliminated";
+        s.tiles.forEach(t=>{ if(t.owner===pl.id) t.owner=null; });
+        pl.properties=[];
+        addLog(s, `💀 ${pl.name} đã bị MC xác nhận LOẠI khỏi cuộc chơi.`);
+      });
+    };
+    div.appendChild(btn);
+    wrap.appendChild(div);
+  });
+}
+
+function renderPlayerTable(){
+  const table = document.getElementById("playerTable");
+  const sorted = [...state.players].sort((a,b)=>totalAssets(state,b)-totalAssets(state,a));
+  let html = `<tr><th></th><th>Đội</th><th>Tiền</th><th>Đất NN/TN/DV</th><th>Tổng TS</th><th>Trạng thái</th><th>Cờ</th><th>Phí x2</th></tr>`;
+  sorted.forEach(p=>{
+    const counts={NN:0,TN:0,DV:0};
+    p.properties.forEach(i=>{const t=tileInfo(i); if(t.type==="property") counts[t.landType]++;});
+    const mono = isMonopoly(state,p);
+    const weak = isWeak(state,p);
+    const mult = p.properties.length>0 ? state.tiles[p.properties[0]].rentMultiplier : 1;
+    html += `<tr>
+      <td style="color:${p.color}">●</td><td>${p.name}</td>
+      <td>${p.money.toLocaleString()}$</td>
+      <td>${counts.NN}/${counts.TN}/${counts.DV}</td>
+      <td><b>${totalAssets(state,p).toLocaleString()}$</b></td>
+      <td>${p.status==="active"?"✅ Đang chơi":p.status==="shareholder"?"📎 Cổ đông của "+state.players[p.shareholderOf].name:"💀 Bị loại"}</td>
+      <td>${weak?'<span class="tag weak">Yếu</span>':""}${mono?'<span class="tag mono">Độc quyền</span>':""}${p.jailTurns>0?`<span class="tag jail">Tù ${p.jailTurns}</span>`:""}</td>
+      <td>${mono?`<button class="btn-bad" style="padding:4px 8px;font-size:11px;" onclick="toggleMonopolyRent(${p.id})">${mult===2?"Hủy x2":"Bật x2"}</button>`:"-"}</td>
+    </tr>`;
+  });
+  table.innerHTML = html;
+}
+
+async function toggleMonopolyRent(pid){
+  await mutateState(s=>{
+    const p = s.players[pid];
+    const cur = p.properties.length>0 ? s.tiles[p.properties[0]].rentMultiplier : 1;
+    const newMult = cur===2?1:2;
+    p.properties.forEach(i=>{ s.tiles[i].rentMultiplier = newMult; });
+    addLog(s, `${p.name} ${newMult===2?"được bật":"bị hủy"} quyền tăng phí mặt bằng x2 (độc quyền).`);
+  });
+}
+
+function renderSelects(){
+  const editSel=document.getElementById("editPlayerSelect");
+  const maBuyer=document.getElementById("maBuyer");
+  const maSeller=document.getElementById("maSeller");
+  const prioritySelect=document.getElementById("prioritySelect");
+  [editSel,maBuyer,maSeller].forEach(s=>{ s.innerHTML=""; });
+  if(prioritySelect.children.length>1) prioritySelect.innerHTML = '<option value="">-- Không đội nào --</option>';
+  state.players.forEach(p=>{
+    [editSel,maBuyer,maSeller].forEach(s=>{
+      const o=document.createElement("option"); o.value=p.id; o.textContent=p.name; s.appendChild(o);
+    });
+  });
+  joinedPlayers(state).forEach(p=>{
+    const o=document.createElement("option"); o.value=p.id; o.textContent=p.name; prioritySelect.appendChild(o);
+  });
+}
+
+function renderLog(){
+  document.getElementById("logBox").innerHTML = state.log.map(l=>`<p style="margin:2px 0;">${l}</p>`).join("");
+}
+
+// ---------------- ACTIONS ----------------
+document.getElementById("btnRandomOrder").addEventListener("click", async ()=>{
+  await mutateState(s=>{
+    const joined = joinedPlayers(s);
+    if(joined.length < 2){ addLog(s, "⚠️ Cần ít nhất 2 đội tham gia trước khi bắt đầu."); return; }
+    const order = joined.map(p=>p.id);
+    for(let i=order.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [order[i],order[j]] = [order[j],order[i]];
+    }
+    s.turnOrder = order;
+    s.turnOrderLocked = true;
+    s.gameStarted = true;
+    addLog(s, `🎲 MC đã random & khóa thứ tự đi (${joined.length} đội): ${order.map(id=>s.players[id].name).join(" → ")}`);
+    addLog(s, `Hỏi: có đội nào muốn nộp 50$ để đi trước không?`);
+  });
+});
+
+document.getElementById("btnConfirmPriority").addEventListener("click", async ()=>{
+  const pid = document.getElementById("prioritySelect").value;
+  await mutateState(s=>{
+    if(pid!==""){
+      const id = parseInt(pid);
+      s.players[id].money -= PRIORITY_FEE;
+      s.turnOrder = [id, ...s.turnOrder.filter(x=>x!==id)];
+      addLog(s, `🥇 ${s.players[id].name} nộp ${PRIORITY_FEE}$ để giành quyền đi trước.`);
+    } else {
+      addLog(s, `Không đội nào nộp phí ưu tiên — giữ thứ tự random.`);
+    }
+    s.priorityUsed = true;
+    s.currentTurnPos = 0;
+  });
+});
+
+document.getElementById("btnNextPhase").addEventListener("click", async ()=>{
+  await mutateState(s=>{
+    if(s.phase >= PHASE_NAMES.length-1){ addLog(s,"Đã ở giai đoạn cuối."); return; }
+    s.phase++;
+    addLog(s, `📢 MC chuyển sang Giai đoạn ${PHASE_NAMES[s.phase]}`);
+  });
+});
+
+document.getElementById("btnAntiTrust").addEventListener("click", async ()=>{
+  await mutateState(s=>{
+    const monoPlayers = s.players.filter(p=>isMonopoly(s,p));
+    if(monoPlayers.length===0){ addLog(s,"Không có đội độc quyền nào để áp thuế."); return; }
+    let totalTax=0;
+    monoPlayers.forEach(p=>{ p.money -= ANTITRUST_TAX; totalTax+=ANTITRUST_TAX; addLog(s, `⚖️ ${p.name} nộp thuế chống độc quyền ${ANTITRUST_TAX}$.`); });
+    const poorest = s.players.filter(p=>p.status==="active").sort((a,b)=>totalAssets(s,a)-totalAssets(s,b)).slice(0,2);
+    const share = Math.floor(totalTax/Math.max(poorest.length,1));
+    poorest.forEach(p=>{ p.money+=share; addLog(s, `💚 ${p.name} nhận hỗ trợ ${share.toLocaleString()}$.`); });
+  });
+});
+
+document.getElementById("btnMAConfirm").addEventListener("click", async ()=>{
+  const buyerId = parseInt(document.getElementById("maBuyer").value);
+  const sellerId = parseInt(document.getElementById("maSeller").value);
+  const price = parseInt(document.getElementById("maPrice").value);
+  if(buyerId===sellerId || isNaN(price)){ alert("Chọn 2 đội khác nhau và nhập giá hợp lệ."); return; }
+  await mutateState(s=>{
+    const buyer=s.players[buyerId], seller=s.players[sellerId];
+    seller.properties.forEach(i=>{ s.tiles[i].owner=buyer.id; buyer.properties.push(i); });
+    seller.properties=[];
+    buyer.money -= price;
+    seller.money += price;
+    seller.status="shareholder";
+    seller.shareholderOf=buyer.id;
+    addLog(s, `🤝 M&A: ${buyer.name} mua lại ${seller.name} giá ${price.toLocaleString()}$. ${seller.name} thành cổ đông.`);
+  });
+  document.getElementById("maPrice").value="";
+});
+
+document.getElementById("btnEditMoney").addEventListener("click", async ()=>{
+  const pid = parseInt(document.getElementById("editPlayerSelect").value);
+  const val = parseInt(document.getElementById("editMoneyInput").value);
+  if(isNaN(val)) return;
+  await mutateState(s=>{
+    s.players[pid].money = val;
+    addLog(s, `🛠️ MC sửa tay: ${s.players[pid].name} → ${val.toLocaleString()}$`);
+  });
+  document.getElementById("editMoneyInput").value="";
+});
+
+document.getElementById("btnEndGame").addEventListener("click", async ()=>{
+  await mutateState(s=>{ s.gameEnded = true; addLog(s,"🏁 MC đã kết thúc game."); });
+  const ranked = [...state.players].filter(p=>p.status!=="eliminated").sort((a,b)=>totalAssets(state,b)-totalAssets(state,a));
+  let html = `<tr><th>#</th><th>Đội</th><th>Tiền</th><th>Giá trị đất</th><th>Tổng TS</th><th>Trạng thái</th></tr>`;
+  ranked.forEach((p,i)=>{
+    const propVal = p.properties.reduce((sum,idx)=>sum+RAW_TILES[idx][3],0);
+    html += `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.money.toLocaleString()}$</td>
+      <td>${propVal.toLocaleString()}$</td><td><b>${totalAssets(state,p).toLocaleString()}$</b></td>
+      <td>${p.status==="shareholder"?"Cổ đông của "+state.players[p.shareholderOf].name:"Độc lập"}</td></tr>`;
+  });
+  document.getElementById("resultTable").innerHTML = html;
+  document.getElementById("resultPanel").style.display = "block";
+});
+
+init();
+</script>
+</body>
+</html>

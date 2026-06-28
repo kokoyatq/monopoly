@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Từ Cạnh Tranh Đến Độc Quyền</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="./game-data.js"></script>
+<script src="./supabase-client.js"></script>
+<style>
+  :root{ --bg:#0f172a; --panel:#1e293b; --accent:#fbbf24; --text:#e2e8f0; --good:#22c55e; --bad:#ef4444; }
+  *{box-sizing:border-box; font-family:'Segoe UI',Arial,sans-serif;}
+  body{margin:0; background:var(--bg); color:var(--text); display:flex; height:100vh; overflow:hidden;}
+  #boardWrap{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;}
+  #boardCanvas{background:#14532d; border-radius:10px; box-shadow:0 0 30px rgba(0,0,0,.5); max-width:90vmin; max-height:90vmin;}
+  #phaseBar{display:flex; align-items:center; gap:14px; background:var(--panel); padding:10px 18px; border-radius:10px; font-size:14px;}
+  #phaseBar b{color:var(--accent);}
+  #phaseBar.suggest{box-shadow:0 0 0 2px var(--accent); animation:pulse 1.5s infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 2px var(--accent);}50%{box-shadow:0 0 14px 2px var(--accent);}100%{box-shadow:0 0 0 2px var(--accent);}}
+  #sidebar{width:340px; background:var(--panel); padding:14px; display:flex; flex-direction:column; gap:10px; overflow-y:auto;}
+  #sidebar h2{margin:0; font-size:16px; color:var(--accent);}
+  .player-card{background:#0f172a; border-radius:8px; padding:7px 9px; border-left:5px solid #888; font-size:12px;}
+  .player-card.current{border-left-color:var(--accent); box-shadow:0 0 8px rgba(251,191,36,.4);}
+  .player-card.eliminated{opacity:.35; text-decoration:line-through;}
+  .player-card.shareholder{opacity:.6; font-style:italic;}
+  .tag{display:inline-block; font-size:10px; padding:1px 5px; border-radius:4px; margin-left:4px;}
+  .tag.weak{background:#7f1d1d;} .tag.mono{background:#7c2d12;} .tag.jail{background:#1e3a8a;}
+  button{cursor:pointer; border:none; border-radius:6px; padding:10px; font-size:14px; font-weight:bold;}
+  button:disabled{opacity:.35; cursor:not-allowed;}
+  .btn-main{background:var(--accent); color:#1e293b;}
+  .btn-buy{background:var(--good); color:#fff;}
+  .btn-skip{background:#475569; color:#fff;}
+  .btn-bad{background:var(--bad); color:#fff;}
+  #log{flex:1; background:#0f172a; border-radius:8px; padding:7px; font-size:11px; overflow-y:auto; max-height:160px;}
+  #diceResult{font-size:24px; text-align:center; font-weight:bold; color:var(--accent);}
+  #myTag{font-size:12px; background:#334155; padding:4px 8px; border-radius:6px; text-align:center;}
+  .modal-overlay{position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:50;}
+  .modal-overlay.show{display:flex;}
+  .modal-box{background:var(--panel); border-radius:10px; padding:20px; min-width:320px;}
+  .modal-box h3{margin-top:0; color:var(--accent);}
+  .row-flex{display:flex; gap:8px;}
+  .row-flex>*{flex:1;}
+</style>
+</head>
+<body>
+
+<div id="boardWrap">
+  <div id="phaseBar">
+    <span>⏱ <b id="timer">00:00</b></span>
+    <span>Giai đoạn: <b id="phaseName">-</b></span>
+    <span id="suggestText" style="color:var(--accent); display:none;">⏰ (Chỉ MC mới chuyển giai đoạn được)</span>
+  </div>
+  <canvas id="boardCanvas" width="700" height="700"></canvas>
+</div>
+
+<div id="sidebar">
+  <h2>🏛️ Từ Cạnh Tranh Đến Độc Quyền</h2>
+  <div id="myTag">Bạn đang xem: <b id="myTagName">Khán giả / Máy chiếu</b></div>
+  <div id="diceResult">-</div>
+  <button id="btnRoll" class="btn-main">🎲🎲 Đổ xúc xắc</button>
+  <div id="players"></div>
+  <div id="log"></div>
+</div>
+
+<div class="modal-overlay show" id="lobbyScreen" style="z-index:100;">
+  <div class="modal-box" style="width:480px;">
+    <h3>🚪 Vào phòng — chọn đội của bạn</h3>
+    <p style="font-size:13px;">Bấm vào 1 ô còn trống, nhập tên đội rồi xác nhận. Nếu bạn đã vào trước đó, trang sẽ tự nhận lại đội của bạn.</p>
+    <div id="slotList" style="display:flex; flex-direction:column; gap:6px;"></div>
+    <div id="claimBox" style="display:none; margin-top:10px;">
+      <input type="text" id="claimNameInput" placeholder="Nhập tên đội..." maxlength="20"/>
+      <div class="row-flex" style="margin-top:8px;">
+        <button class="btn-buy" id="btnClaimConfirm">✅ Xác nhận tham gia</button>
+        <button class="btn-skip" id="btnClaimCancel">Quay lại</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="buyModal">
+  <div class="modal-box">
+    <h3 id="buyTitle">Mua đất?</h3>
+    <p id="buyDesc"></p>
+    <div class="row-flex">
+      <button class="btn-buy" id="btnBuyYes">✅ Mua</button>
+      <button class="btn-skip" id="btnBuyNo">❌ Bỏ qua</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="jailModal">
+  <div class="modal-box">
+    <h3>🚔 Đang ở trong tù</h3>
+    <p id="jailDesc"></p>
+    <div class="row-flex">
+      <button class="btn-buy" id="btnJailRoll">🎲 Đổ xúc xắc (đôi = ra ngay)</button>
+      <button class="btn-bad" id="btnJailPay">💵 Trả 200$ ra ngay</button>
+      <button class="btn-skip" id="btnJailWait">⏳ Chờ thêm lượt</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const LOBBY_KEY = "ctdq_my_slot"; // localStorage: nhớ đội của trình duyệt này
+let myPlayerId = null;
+let selectedSlotForClaim = null;
+
+let state = null;
+const canvas = document.getElementById("boardCanvas");
+const ctx = canvas.getContext("2d");
+
+function buildPositions(gridSize, cellPx){
+  const coords = [];
+  for(let c=0;c<gridSize;c++) coords.push([c,0]);
+  for(let r=1;r<gridSize;r++) coords.push([gridSize-1,r]);
+  for(let c=gridSize-2;c>=0;c--) coords.push([c,gridSize-1]);
+  for(let r=gridSize-2;r>=1;r--) coords.push([0,r]);
+  return coords.slice(0,TOTAL_TILES).map(([c,r])=>({x:c*cellPx, y:r*cellPx}));
+}
+const GRID = 11;
+const CELL = 700/GRID;
+const positions = buildPositions(GRID, CELL);
+
+async function init(){
+  state = await loadState();
+  if(!state || !state.initialized){
+    state = createInitialState();
+    await saveState(state);
+  }
+  tryAutoRejoin();
+  renderAll();
+  subscribeToChanges((newState)=>{ state = newState; renderAll(); });
+}
+
+function tryAutoRejoin(){
+  const saved = localStorage.getItem(LOBBY_KEY);
+  if(!saved) return;
+  try{
+    const {id, name} = JSON.parse(saved);
+    if(state.players[id] && state.players[id].joined && state.players[id].name === name){
+      myPlayerId = id;
+    }
+  }catch(e){}
+}
+
+function renderLobby(){
+  const lobbyScreen = document.getElementById("lobbyScreen");
+  if(myPlayerId !== null){
+    lobbyScreen.classList.remove("show");
+    document.getElementById("myTagName").textContent = state.players[myPlayerId].name;
+    return;
+  }
+  lobbyScreen.classList.add("show");
+  const list = document.getElementById("slotList");
+  list.innerHTML = "";
+  state.players.forEach(p=>{
+    const btn = document.createElement("button");
+    if(p.joined){
+      btn.textContent = `✅ ${p.name} — đã có người`;
+      btn.disabled = true;
+      btn.style.background = "#334155"; btn.style.color = "#94a3b8";
+    } else if(state.gameStarted){
+      btn.textContent = `⛔ Ô trống — game đã bắt đầu, không vào được nữa`;
+      btn.disabled = true;
+      btn.style.background = "#334155"; btn.style.color = "#94a3b8";
+    } else {
+      btn.textContent = `⬜ Ô trống — bấm để chọn`;
+      btn.style.background = p.color; btn.style.color = "#fff";
+      btn.onclick = ()=>{
+        selectedSlotForClaim = p.id;
+        document.getElementById("claimBox").style.display = "block";
+        document.getElementById("claimNameInput").value = "";
+        document.getElementById("claimNameInput").focus();
+      };
+    }
+    list.appendChild(btn);
+  });
+}
+
+document.getElementById("btnClaimConfirm").addEventListener("click", async ()=>{
+  const name = document.getElementById("claimNameInput").value.trim();
+  if(!name){ alert("Nhập tên đội đã."); return; }
+  if(selectedSlotForClaim === null) return;
+  let success = false;
+  await mutateState(s=>{
+    const p = s.players[selectedSlotForClaim];
+    if(p.joined || s.gameStarted){ return; } // đã bị người khác giành mất hoặc game đã chạy
+    p.joined = true;
+    p.name = name;
+    addLog(s, `🙋 "${name}" đã vào phòng.`);
+    success = true;
+  });
+  if(success){
+    myPlayerId = selectedSlotForClaim;
+    localStorage.setItem(LOBBY_KEY, JSON.stringify({id:myPlayerId, name}));
+    document.getElementById("claimBox").style.display = "none";
+  } else {
+    alert("Ô này vừa có người khác chọn rồi, chọn ô khác nhé!");
+  }
+  selectedSlotForClaim = null;
+});
+document.getElementById("btnClaimCancel").addEventListener("click", ()=>{
+  selectedSlotForClaim = null;
+  document.getElementById("claimBox").style.display = "none";
+});
+
+function fmtTime(s){
+  const m = Math.floor(s/60).toString().padStart(2,"0");
+  const sec = (s%60).toString().padStart(2,"0");
+  return m+":"+sec;
+}
+
+function renderAll(){
+  if(!state) return;
+  renderLobby();
+  document.getElementById("timer").textContent = fmtTime(state.elapsedSec);
+  document.getElementById("phaseName").textContent = state.phase!==undefined ? PHASE_NAMES[state.phase] : "-";
+  const suggested = state.phase < PHASE_SUGGEST_SECONDS.length && state.elapsedSec >= PHASE_SUGGEST_SECONDS[state.phase];
+  document.getElementById("phaseBar").classList.toggle("suggest", !!suggested);
+  document.getElementById("suggestText").style.display = suggested ? "inline" : "none";
+  renderBoard();
+  renderPlayers();
+  renderLog();
+  updateRollButton();
+}
+
+function drawTile(tile, idx, pos){
+  ctx.save(); ctx.translate(pos.x,pos.y);
+  let bg = "#0b1220";
+  if(tile.type==="property") bg = state.tiles[idx].owner!==null ? "#1e293b" : "#0b1220";
+  if(tile.type==="jail") bg = "#1e3a8a";
+  if(tile.type==="tax") bg = "#7f1d1d";
+  if(tile.type==="start") bg = "#166534";
+  if(tile.type==="state") bg = "#155e75";
+  ctx.fillStyle = bg; ctx.fillRect(0,0,CELL,CELL);
+  if(tile.type==="property"){
+    ctx.fillStyle = LAND_COLOR[tile.landType];
+    ctx.fillRect(0,0,CELL,CELL*0.25);
+    const owner = state.tiles[idx].owner;
+    if(owner!==null){
+      ctx.fillStyle = state.players[owner].color;
+      ctx.beginPath(); ctx.arc(CELL*0.5,CELL*0.65,CELL*0.16,0,Math.PI*2); ctx.fill();
+    }
+  }
+  ctx.strokeStyle="#0008"; ctx.strokeRect(0,0,CELL,CELL);
+  ctx.fillStyle="#fff"; ctx.font="7px sans-serif"; ctx.textAlign="center";
+  ctx.fillText(tile.name.slice(0,10), CELL/2, CELL-3);
+  ctx.restore();
+}
+function drawTokens(){
+  const byTile = {};
+  state.players.forEach(p=>{
+    if(p.status==="eliminated"||p.status==="shareholder") return;
+    byTile[p.position] = byTile[p.position]||[];
+    byTile[p.position].push(p);
+  });
+  Object.keys(byTile).forEach(posIdx=>{
+    const pos = positions[posIdx];
+    byTile[posIdx].forEach((p,i)=>{
+      const ox=(i%3)*8, oy=Math.floor(i/3)*8;
+      ctx.beginPath(); ctx.fillStyle=p.color;
+      ctx.arc(pos.x+9+ox,pos.y+9+oy,4.5,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="#fff"; ctx.lineWidth=1; ctx.stroke();
+    });
+  });
+}
+// TODO (animation sau này): thay bằng requestAnimationFrame để token trượt mượt.
+// TODO (3D sau này): thay toàn bộ renderBoard này bằng scene Three.js.
+function renderBoard(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  RAW_TILES.forEach((raw,i)=>drawTile(tileInfo(i), i, positions[i]));
+  drawTokens();
+}
+
+function renderPlayers(){
+  const wrap = document.getElementById("players");
+  wrap.innerHTML = "";
+  const curId = currentPlayerId(state);
+  state.players.forEach((p,i)=>{
+    const div = document.createElement("div");
+    let cls = "player-card";
+    if(i===curId && p.status==="active") cls += " current";
+    if(p.status==="eliminated") cls += " eliminated";
+    if(p.status==="shareholder") cls += " shareholder";
+    div.className = cls;
+    div.style.borderLeftColor = p.color;
+    let tags = "";
+    if(isWeak(state,p)) tags += `<span class="tag weak">Yếu</span>`;
+    if(isMonopoly(state,p)) tags += `<span class="tag mono">Độc quyền</span>`;
+    if(p.jailTurns>0) tags += `<span class="tag jail">Tù ${p.jailTurns}</span>`;
+    let statusText = p.status==="shareholder" ? ` (Cổ đông của ${state.players[p.shareholderOf].name})` :
+                      p.status==="eliminated" ? " (Đã bị loại)" : "";
+    div.innerHTML = `<b>${p.name}</b>${statusText} ${tags}<br/>
+      💰 ${p.money.toLocaleString()}$ &nbsp; 📍${p.position} &nbsp; 🏠${p.properties.length} &nbsp; Σ${totalAssets(state,p).toLocaleString()}$`;
+    wrap.appendChild(div);
+  });
+}
+function renderLog(){
+  document.getElementById("log").innerHTML = state.log.map(l=>`<p style="margin:2px 0;">${l}</p>`).join("");
+}
+
+function updateRollButton(){
+  const btn = document.getElementById("btnRoll");
+  if(!state.turnOrderLocked || state.gameEnded){ btn.disabled = true; return; }
+  const curId = currentPlayerId(state);
+  const isMyTurn = myPlayerId === curId;
+  btn.disabled = !isMyTurn;
+  btn.textContent = isMyTurn ? "🎲🎲 Đổ xúc xắc (lượt của bạn!)" : `🎲🎲 Đang chờ ${state.players[curId]?.name||""}`;
+  // nếu đang bị giam tù và đến lượt mình -> mở modal tù thay vì roll thường
+  if(isMyTurn && state.players[curId].jailTurns>0){
+    openJailModal();
+  }
+}
+
+function nextTurnIndex(){
+  let pos = state.currentTurnPos;
+  let tries=0;
+  do{
+    pos = (pos+1) % state.turnOrder.length;
+    tries++;
+  } while(state.players[state.turnOrder[pos]].status!=="active" && tries<=NUM_PLAYERS);
+  return pos;
+}
+
+function roll2Dice(){ return [1+Math.floor(Math.random()*6), 1+Math.floor(Math.random()*6)]; }
+
+document.getElementById("btnRoll").addEventListener("click", async ()=>{
+  const curId = currentPlayerId(state);
+  if(myPlayerId !== curId) return;
+  const player = state.players[curId];
+  if(player.jailTurns>0){ openJailModal(); return; }
+
+  const [d1,d2] = roll2Dice();
+  const sum = d1+d2;
+  document.getElementById("diceResult").textContent = `🎲${d1} 🎲${d2} = ${sum}`;
+
+  await mutateState(s=>{
+    const p = s.players[curId];
+    const oldPos = p.position;
+    let newPos = (oldPos+sum) % TOTAL_TILES;
+    if(newPos < oldPos){
+      p.money += PASS_START_BONUS;
+      addLog(s, `${p.name} đi qua Xuất Phát, +${PASS_START_BONUS}$`);
+    }
+    p.position = newPos;
+    s.lastDice = [d1,d2];
+    resolveTile(s, p, newPos);
+  });
+});
+
+function resolveTile(s, player, idx){
+  const tile = tileInfo(idx);
+  if(tile.type==="start"){
+    addLog(s, `${player.name} đứng tại Xuất Phát.`);
+    advanceTurn(s);
+  } else if(tile.type==="tax"){
+    player.money -= TAX_AMOUNT;
+    addLog(s, `${player.name} nộp thuế ${TAX_AMOUNT}$.`);
+    advanceTurn(s);
+  } else if(tile.type==="state"){
+    player.money -= STATE_FEE;
+    addLog(s, `${player.name} dừng tại ${tile.name} — nộp ${STATE_FEE}$.`);
+    advanceTurn(s);
+  } else if(tile.type==="jail"){
+    player.jailTurns = 2;
+    addLog(s, `${player.name} bị VÀO TÙ — giữ 2 lượt.`);
+    advanceTurn(s);
+  } else if(tile.type==="property"){
+    const tileState = s.tiles[idx];
+    if(tileState.owner===null){
+      // sẽ mở modal mua ở phía client, chưa advanceTurn ở đây
+      window.__pendingBuy = {idx};
+      setTimeout(()=>openBuyModalIfPending(), 50);
+    } else if(tileState.owner===player.id){
+      addLog(s, `${player.name} đứng trên đất của chính mình.`);
+      advanceTurn(s);
+    } else {
+      const owner = s.players[tileState.owner];
+      const rent = tile.rent * (tileState.rentMultiplier||1);
+      player.money -= rent;
+      owner.money += rent;
+      addLog(s, `${player.name} trả phí mặt bằng ${rent.toLocaleString()}$ cho ${owner.name} (${tile.name}).`);
+      advanceTurn(s);
+    }
+  }
+}
+function advanceTurn(s){ s.currentTurnPos = nextTurnIndexFor(s); }
+function nextTurnIndexFor(s){
+  let pos = s.currentTurnPos, tries=0;
+  do{ pos=(pos+1)%s.turnOrder.length; tries++; }
+  while(s.players[s.turnOrder[pos]].status!=="active" && tries<=NUM_PLAYERS);
+  return pos;
+}
+
+// ---------------- MUA ĐẤT ----------------
+const buyModal=document.getElementById("buyModal");
+function openBuyModalIfPending(){
+  if(!window.__pendingBuy) return;
+  const {idx} = window.__pendingBuy;
+  const tile = tileInfo(idx);
+  const player = state.players[myPlayerId];
+  document.getElementById("buyTitle").textContent = `${tile.name} (${tile.landType}) — ô ${idx}`;
+  document.getElementById("buyDesc").textContent = `Giá: ${tile.price.toLocaleString()}$ — Phí mặt bằng: ${tile.rent.toLocaleString()}$. Đội bạn có ${player.money.toLocaleString()}$.`;
+  document.getElementById("btnBuyYes").disabled = player.money < tile.price;
+  buyModal.classList.add("show");
+}
+document.getElementById("btnBuyYes").addEventListener("click", async ()=>{
+  const {idx} = window.__pendingBuy;
+  await mutateState(s=>{
+    const p = s.players[myPlayerId];
+    const t = s.tiles[idx];
+    p.money -= RAW_TILES[idx][3];
+    t.owner = p.id;
+    p.properties.push(idx);
+    addLog(s, `${p.name} đã mua ${RAW_TILES[idx][0]} giá ${RAW_TILES[idx][3].toLocaleString()}$.`);
+    advanceTurn(s);
+  });
+  window.__pendingBuy = null;
+  buyModal.classList.remove("show");
+});
+document.getElementById("btnBuyNo").addEventListener("click", async ()=>{
+  const {idx} = window.__pendingBuy;
+  await mutateState(s=>{
+    addLog(s, `${s.players[myPlayerId].name} không mua ${RAW_TILES[idx][0]}.`);
+    advanceTurn(s);
+  });
+  window.__pendingBuy = null;
+  buyModal.classList.remove("show");
+});
+
+// ---------------- NHÀ TÙ ----------------
+const jailModal=document.getElementById("jailModal");
+function openJailModal(){
+  const player = state.players[myPlayerId];
+  document.getElementById("jailDesc").textContent = `${player.name} còn ${player.jailTurns} lượt trong tù. (Vẫn được thu phí mặt bằng đất đang sở hữu)`;
+  jailModal.classList.add("show");
+}
+document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
+  const [d1,d2]=roll2Dice();
+  document.getElementById("diceResult").textContent = `🎲${d1} 🎲${d2}`;
+  await mutateState(s=>{
+    const p = s.players[myPlayerId];
+    if(d1===d2){ addLog(s, `${p.name} đổ đôi (${d1},${d2}) — RA TÙ ngay!`); p.jailTurns=0; }
+    else { p.jailTurns--; addLog(s, `${p.name} không đổ đôi, còn ${p.jailTurns} lượt trong tù.`); }
+    advanceTurn(s);
+  });
+  jailModal.classList.remove("show");
+});
+document.getElementById("btnJailPay").addEventListener("click", async ()=>{
+  await mutateState(s=>{
+    const p = s.players[myPlayerId];
+    p.money -= 200; p.jailTurns=0;
+    addLog(s, `${p.name} trả 200$ để ra tù.`);
+    advanceTurn(s);
+  });
+  jailModal.classList.remove("show");
+});
+document.getElementById("btnJailWait").addEventListener("click", async ()=>{
+  await mutateState(s=>{
+    const p = s.players[myPlayerId];
+    p.jailTurns--;
+    addLog(s, `${p.name} chờ thêm 1 lượt trong tù.`);
+    advanceTurn(s);
+  });
+  jailModal.classList.remove("show");
+});
+
+init();
+</script>
+</body>
+</html>
