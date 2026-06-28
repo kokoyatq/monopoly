@@ -234,16 +234,22 @@ function renderSelects(){
   const maBuyer=document.getElementById("maBuyer");
   const maSeller=document.getElementById("maSeller");
   const prioritySelect=document.getElementById("prioritySelect");
-  [editSel,maBuyer,maSeller].forEach(s=>{ s.innerHTML=""; });
-  if(prioritySelect.children.length>1) prioritySelect.innerHTML = '<option value="">-- Không đội nào --</option>';
-  state.players.forEach(p=>{
-    [editSel,maBuyer,maSeller].forEach(s=>{
-      const o=document.createElement("option"); o.value=p.id; o.textContent=p.name; s.appendChild(o);
+
+  [editSel,maBuyer,maSeller].forEach(sel=>{
+    const prevValue = sel.value;
+    sel.innerHTML="";
+    state.players.forEach(p=>{
+      const o=document.createElement("option"); o.value=p.id; o.textContent=p.name; sel.appendChild(o);
     });
+    if(prevValue!=="" && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
   });
+
+  const prevPriority = prioritySelect.value;
+  prioritySelect.innerHTML = '<option value="">-- Không đội nào --</option>';
   joinedPlayers(state).forEach(p=>{
     const o=document.createElement("option"); o.value=p.id; o.textContent=p.name; prioritySelect.appendChild(o);
   });
+  if(prevPriority!=="" && [...prioritySelect.options].some(o=>o.value===prevPriority)) prioritySelect.value = prevPriority;
 }
 
 function renderLog(){
