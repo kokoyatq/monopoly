@@ -268,32 +268,53 @@ async function init(){
   subscribeToChanges((newState)=>{
     const prev = state;
     state = newState;
-    // Remote state changes: animate dice then tokens then resolve modal
-    if(state.diceRollId && state.diceRollId !== lastSeenDiceRollId){
+
+    // Check for a new dice roll we haven't seen yet
+    const isNewRoll = state.diceRollId && state.diceRollId !== lastSeenDiceRollId;
+
+    if(isNewRoll){
       lastSeenDiceRollId = state.diceRollId;
-      // Only do full sequence on OTHER players' turns (my own turn already ran sequence locally)
-      if(state.lastMovedPlayerId !== myPlayerId){
+
+      // Run full visual sequence for:
+      //  - display mode (myPlayerId===null, always show)
+      //  - spectators / other players (lastMovedPlayerId !== myPlayerId)
+      // Skip if it was MY OWN roll (already ran sequence locally before saving)
+      const isMine = myPlayerId !== null && state.lastMovedPlayerId === myPlayerId;
+      if(!isMine){
         runRemoteSequence(prev);
+        return;   // ← don't renderAll() yet; runRemoteSequence will call it when done
       }
     }
-    renderAll();
+
+    // No sequence needed — just refresh UI
+    if(!sequenceLocked) renderAll();
   });
 }
 
-/* Remote sequence for other-player moves (we see state after the fact) */
+/* Remote sequence for other-player moves — also used by display mode */
 function runRemoteSequence(prevState){
-  if(!state.lastDice) return;
+  if(!state.lastDice) { renderAll(); return; }
   const [d1,d2] = state.lastDice;
+  const movedId  = state.lastMovedPlayerId;
+
+  // Capture the "from" position from the previous snapshot.
+  // If prevState already has the new position (can happen if Supabase sends
+  // the updated row twice), fall back to displayedPos which we control locally.
+  const from = (prevState && prevState.players && prevState.players[movedId] &&
+                prevState.players[movedId].position !== state.players[movedId].position)
+               ? prevState.players[movedId].position
+               : (displayedPos[movedId] !== undefined ? displayedPos[movedId] : state.players[movedId].position);
+  const to   = state.players[movedId].position;
+
   sequenceLocked = true;
-  // 1. Show dice on board
-  showDiceOnBoard(d1,d2, ()=>{
-    // 2. Animate token movement
-    const movedId = state.lastMovedPlayerId;
-    const from = prevState && prevState.players[movedId] ? prevState.players[movedId].position : state.players[movedId].position;
-    const to = state.players[movedId].position;
+  updateRollButton();   // immediately grey-out the button for display mode
+
+  // 1. Show dice on board for 4 s
+  showDiceOnBoard(d1, d2, ()=>{
+    // 2. Animate token
     animateTokenMove(movedId, from, to, ()=>{
       sequenceLocked = false;
-      renderAll();
+      renderAll();       // full refresh once everything is done
     });
   });
 }
@@ -755,13 +776,19 @@ function nextTurnIndexFor(s){
 }
 
 /* ─── Buy modal ─── */
+const BUY_PRICE_CAP = 300;   // chi cho mua neu gia <= 300$
 const buyModal=document.getElementById("buyModal");
 function openBuyModal(idx){
   const tile=tileInfo(idx);
   const player=state.players[myPlayerId];
+  const tooExpensive = tile.price > BUY_PRICE_CAP;
+  const cantAfford   = player.money < tile.price;
   document.getElementById("buyTitle").textContent=`${tile.name} (${tile.landType}) — ô ${idx}`;
-  document.getElementById("buyDesc").textContent=`Giá: ${tile.price.toLocaleString()}$ — Phí mặt bằng: ${tile.rent.toLocaleString()}$. Đội bạn có ${player.money.toLocaleString()}$.`;
-  document.getElementById("btnBuyYes").disabled=player.money<tile.price;
+  let desc = `Giá: ${tile.price.toLocaleString()}$ — Phí mặt bằng: ${tile.rent.toLocaleString()}$. Đội bạn có ${player.money.toLocaleString()}$.`;
+  if(tooExpensive)  desc += ` ⛔ Doanh nghiệp này có giá trên ${BUY_PRICE_CAP}$ — không được phép mua.`;
+  else if(cantAfford) desc += ` ⛔ Không đủ tiền.`;
+  document.getElementById("buyDesc").textContent = desc;
+  document.getElementById("btnBuyYes").disabled = tooExpensive || cantAfford;
   buyModal.classList.add("show");
 }
 document.getElementById("btnBuyYes").addEventListener("click", async ()=>{
