@@ -1,6 +1,5 @@
 /* ============================================================
    game-data.js — dữ liệu & luật chơi dùng chung
-   (board.html và admin.html đều load file này)
    ============================================================ */
 
 const NUM_PLAYERS = 8;
@@ -62,8 +61,8 @@ const RAW_TILES = [
   ["Vật liệu xây dựng","property","TN",250,90],
   ["Cty công nghệ","property","TN",350,120],
 ];
-const TOTAL_TILES = RAW_TILES.length; // 40
-const START_TILE_INDEX = RAW_TILES.findIndex(t=>t[1]==="start"); // 20
+const TOTAL_TILES = RAW_TILES.length;
+const START_TILE_INDEX = RAW_TILES.findIndex(t=>t[1]==="start");
 
 const LAND_COLOR = {NN:"#4ade80", TN:"#fb923c", DV:"#c084fc"};
 const PLAYER_COLORS = ["#ef4444","#3b82f6","#22c55e","#eab308","#a855f7","#06b6d4","#f97316","#ec4899"];
@@ -76,7 +75,6 @@ function tileInfo(idx){
   return {idx,name,type,landType,price,rent};
 }
 
-// ---------------- TRẠNG THÁI BAN ĐẦU ----------------
 function createInitialState(){
   const players = [];
   for(let i=0;i<NUM_PLAYERS;i++){
@@ -84,27 +82,18 @@ function createInitialState(){
       id:i, name:"(Trống)", color:PLAYER_COLORS[i],
       joined:false, claimToken:null,
       money:START_MONEY, position:START_TILE_INDEX, properties:[],
-      status:"active", shareholderOf:null, jailTurns:0
+      status:"active", shareholderOf:null, shareholderEquity:0, jailTurns:0
     });
   }
   const tiles = RAW_TILES.map(()=>({owner:null, rentMultiplier:1}));
   return {
-    initialized:true,
-    phase:0,
-    elapsedSec:0,
-    gameStarted:false,
-    turnOrder:[],
-    turnOrderLocked:false,
-    priorityUsed:false,
-    currentTurnPos:0,
-    players, tiles,
-    lastDice:null,
-    log:["Đang chờ người chơi vào phòng và nhập tên đội..."],
-    gameEnded:false
+    initialized:true, phase:0, elapsedSec:0, gameStarted:false,
+    turnOrder:[], turnOrderLocked:false, priorityUsed:false,
+    currentTurnPos:0, players, tiles, lastDice:null,
+    log:["Đang chờ người chơi vào phòng và nhập tên đội..."], gameEnded:false
   };
 }
 
-// ---------------- HÀM TÍNH TOÁN DÙNG CHUNG ----------------
 function totalAssets(state, p){
   const propVal = p.properties.reduce((sum,i)=>sum+RAW_TILES[i][3],0);
   return p.money + propVal;
@@ -125,3 +114,20 @@ function addLog(state, msg){
   state.log = [msg, ...state.log].slice(0,60);
 }
 function joinedPlayers(state){ return state.players.filter(p=>p.joined); }
+
+// Hàm hỗ trợ cổ đông
+function makeShareholderOf(s, shareholderId, ownerId){
+  const sp = s.players[shareholderId];
+  const op = s.players[ownerId];
+  const transferVal = sp.properties.reduce((sum,idx)=> sum + RAW_TILES[idx][3], 0);
+  const ownerCurVal = op.properties.reduce((sum,idx)=> sum + RAW_TILES[idx][3], 0);
+  const totalAfter = ownerCurVal + transferVal;
+  const equity = totalAfter === 0 ? 1 : (transferVal / totalAfter);
+
+  sp.properties.forEach(idx=>{ s.tiles[idx].owner = ownerId; op.properties.push(idx); });
+  sp.properties = [];
+  sp.status = "shareholder";
+  sp.shareholderOf = ownerId;
+  sp.shareholderEquity = equity;
+  addLog(s, `🤝 ${sp.name} trở thành cổ đông của ${op.name} — cổ phần ${Math.round(equity*100)}%`);
+}
