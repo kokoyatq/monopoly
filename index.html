@@ -839,103 +839,28 @@ function resolveTile(s, player, idx){
   }
 }
 
-/* Open the right modal after token arrives (only for the active player) */
+/* Open the right modal after token arrives */
 function openTileModal(idx){
-  if(myPlayerId !== currentPlayerId(state) && myPlayerId !== state.lastMovedPlayerId) return;
+  if(myPlayerId !== currentPlayerId(state)) return;
   const tile=tileInfo(idx);
-  if(tile.type==="property"){
-    const tileState=state.tiles[idx];
-    if(tileState.owner===null){
-      window.__pendingBuy={idx};
-      openBuyModal(idx);
-    }
-    // rent already resolved; no modal needed
+  if(tile.type==="property" && state.tiles[idx].owner === null){
+    window.__pendingBuy={idx};
+    openBuyModal(idx);
   }
-  // jail, tax, state — no extra modal, just log
 }
 
-function advanceTurn(s){ s.currentTurnPos=nextTurnIndexFor(s); }
+function advanceTurn(s){ s.currentTurnPos = nextTurnIndexFor(s); }
+
 function nextTurnIndexFor(s){
-  let pos=s.currentTurnPos, tries=0;
-  do{ pos=(pos+1)%s.turnOrder.length; tries++; }
-  while(s.players[s.turnOrder[pos]].status!=="active"&&tries<=NUM_PLAYERS);
+  let pos = s.currentTurnPos, tries = 0;
+  do { 
+    pos = (pos + 1) % s.turnOrder.length; 
+    tries++; 
+  } while (s.players[s.turnOrder[pos]].status === "eliminated" && tries < s.turnOrder.length);
   return pos;
 }
 
-/* ─── Buy modal ─── */
-const BUY_PRICE_CAP = 300;   // chi cho mua neu gia <= 300$
-const buyModal=document.getElementById("buyModal");
-function openBuyModal(idx){
-  const tile=tileInfo(idx);
-  const player=state.players[myPlayerId];
-  const tooExpensive = tile.price > BUY_PRICE_CAP;
-  const cantAfford   = player.money < tile.price;
-  document.getElementById("buyTitle").textContent=`${tile.name} (${tile.landType}) — ô ${idx}`;
-  let desc = `Giá: ${tile.price.toLocaleString()}$ — Phí mặt bằng: ${tile.rent.toLocaleString()}$. Đội bạn có ${player.money.toLocaleString()}$.`;
-  if(tooExpensive)  desc += ` ⛔ Doanh nghiệp này có giá trên ${BUY_PRICE_CAP}$ — không được phép mua.`;
-  else if(cantAfford) desc += ` ⛔ Không đủ tiền.`;
-  document.getElementById("buyDesc").textContent = desc;
-  document.getElementById("btnBuyYes").disabled = tooExpensive || cantAfford;
-  buyModal.classList.add("show");
-}
-document.getElementById("btnBuyYes").addEventListener("click", async ()=>{
-  const {idx}=window.__pendingBuy;
-  await mutateState(s=>{
-    const p=s.players[myPlayerId];
-    const t=s.tiles[idx];
-    p.money-=RAW_TILES[idx][3]; t.owner=p.id; p.properties.push(idx);
-    addLog(s,`${p.name} đã mua ${RAW_TILES[idx][0]} giá ${RAW_TILES[idx][3].toLocaleString()}$.`);
-    advanceTurn(s);
-  });
-  window.__pendingBuy=null; buyModal.classList.remove("show");
-});
-document.getElementById("btnBuyNo").addEventListener("click", async ()=>{
-  const {idx}=window.__pendingBuy;
-  await mutateState(s=>{
-    addLog(s,`${s.players[myPlayerId].name} không mua ${RAW_TILES[idx][0]}.`);
-    advanceTurn(s);
-  });
-  window.__pendingBuy=null; buyModal.classList.remove("show");
-});
-
-/* ─── Jail modal ─── */
-const jailModal=document.getElementById("jailModal");
-function openJailModal(){
-  const player=state.players[myPlayerId];
-  document.getElementById("jailDesc").textContent=`${player.name} còn ${player.jailTurns} lượt trong tù. (Vẫn được thu phí mặt bằng đất đang sở hữu)`;
-  jailModal.classList.add("show");
-}
-document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
-  const [d1,d2]=roll2Dice();
-  document.getElementById("diceResult").textContent=`🎲${d1} 🎲${d2}`;
-  sequenceLocked=true;
-  showDiceOnBoard(d1,d2, async ()=>{
-    await mutateState(s=>{
-      const p=s.players[myPlayerId];
-      s.lastDice=[d1,d2]; s.diceRollId=Date.now()+Math.random(); s.lastMovedPlayerId=myPlayerId;
-      if(d1===d2){ addLog(s,`${p.name} đổ đôi (${d1},${d2}) — RA TÙ ngay!`); p.jailTurns=0; }
-      else { p.jailTurns--; addLog(s,`${p.name} không đổ đôi, còn ${p.jailTurns} lượt trong tù.`); }
-      advanceTurn(s);
-    });
-    sequenceLocked=false; renderAll();
-  });
-  jailModal.classList.remove("show");
-});
-document.getElementById("btnJailPay").addEventListener("click", async ()=>{
-  await mutateState(s=>{
-    const p=s.players[myPlayerId]; p.money-=200; p.jailTurns=0;
-    addLog(s,`${p.name} trả 200$ để ra tù.`); advanceTurn(s);
-  });
-  jailModal.classList.remove("show");
-});
-document.getElementById("btnJailWait").addEventListener("click", async ()=>{
-  await mutateState(s=>{
-    const p=s.players[myPlayerId]; p.jailTurns--;
-    addLog(s,`${p.name} chờ thêm 1 lượt trong tù.`); advanceTurn(s);
-  });
-  jailModal.classList.remove("show");
-});
-
+// Gọi init khi trang load
 init();
 </script>
 </body>
