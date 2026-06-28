@@ -711,17 +711,17 @@ function resolveTile(s, player, idx){
       const rent=tile.rent*(tileState.rentMultiplier||1);
       player.money-=rent;
 
-      // Trả cổ tức cho cổ đông của owner (nếu có)
-      let ownerReceives=rent;
+// Trả cổ tức cho các cổ đông của owner trước
+      let ownerReceives = rent;
       s.players.forEach(sp=>{
-        if(sp.status==="shareholder" && sp.shareholderOf===owner.id && sp.shareholderEquity>0){
-          const cut=Math.round(rent*sp.shareholderEquity);
-          sp.money+=cut;
-          ownerReceives-=cut;
-          addLog(s,`💹 ${sp.name} nhận cổ tức ${cut.toLocaleString()}$ (${Math.round(sp.shareholderEquity*100)}%) từ ${owner.name}`);
+        if(sp.status === "shareholder" && sp.shareholderOf === owner.id && sp.shareholderEquity > 0){
+          const cut = Math.round(rent * sp.shareholderEquity);
+          sp.money    += cut;
+          ownerReceives -= cut;
+          addLog(s, `💹 ${sp.name} nhận cổ tức ${cut.toLocaleString()}$ (${Math.round(sp.shareholderEquity*100)}%) từ ${owner.name} — ${tile.name}`);
         }
       });
-      owner.money+=ownerReceives;
+      owner.money += ownerReceives;
       addLog(s,`${player.name} trả ${rent.toLocaleString()}$ mặt bằng cho ${owner.name} (${tile.name}).`);
       advanceTurn(s);
     }
@@ -745,33 +745,33 @@ function nextTurnIndexFor(s){
   return pos;
 }
 
-/* ─── Cổ đông: tính equity và chuyển đất ─── */
+// Tính % cổ phần dựa trên giá trị đất chuyển giao
 function calcShareholderEquity(s, shareholderId, ownerId){
-  const sp=s.players[shareholderId];
-  const op=s.players[ownerId];
-  const transferVal=sp.properties.reduce((sum,idx)=>sum+RAW_TILES[idx][3], 0);
-  const ownerCurVal=op.properties.reduce((sum,idx)=>sum+RAW_TILES[idx][3], 0);
-  const totalAfter=ownerCurVal+transferVal;
-  if(totalAfter===0) return 1;
-  return transferVal/totalAfter;
+  const shareholder = s.players[shareholderId];
+  const owner       = s.players[ownerId];
+  const transferVal = shareholder.properties.reduce((sum,idx)=> sum + RAW_TILES[idx][3], 0);
+  const ownerCurVal = owner.properties.reduce((sum,idx)=> sum + RAW_TILES[idx][3], 0);
+  const totalAfter  = ownerCurVal + transferVal;
+  if(totalAfter === 0) return 1; // toàn bộ đất là của shareholder → 100%
+  return transferVal / totalAfter;
 }
 
-// Gọi hàm này trong mutateState khi admin xác nhận chuyển cổ đông
+// Gọi hàm này khi admin/game chuyển 1 player thành cổ đông
 function makeShareholderOf(s, shareholderId, ownerId){
-  const sp=s.players[shareholderId];
-  const op=s.players[ownerId];
-  const equity=calcShareholderEquity(s, shareholderId, ownerId);
-  // Chuyển toàn bộ đất
+  const sp = s.players[shareholderId];
+  const op = s.players[ownerId];
+  const equity = calcShareholderEquity(s, shareholderId, ownerId);
+  // Chuyển toàn bộ đất sang owner
   sp.properties.forEach(idx=>{
-    s.tiles[idx].owner=ownerId;
+    s.tiles[idx].owner = ownerId;
     op.properties.push(idx);
   });
-  sp.properties=[];
-  // Gán trạng thái
-  sp.status="shareholder";
-  sp.shareholderOf=ownerId;
-  sp.shareholderEquity=equity;
-  addLog(s,`🤝 ${sp.name} trở thành cổ đông của ${op.name} — cổ phần ${Math.round(equity*100)}%`);
+  sp.properties = [];
+  // Gắn trạng thái cổ đông
+  sp.status         = "shareholder";
+  sp.shareholderOf  = ownerId;
+  sp.shareholderEquity = equity; // VD: 0.3 = 30%
+  addLog(s, `🤝 ${sp.name} trở thành cổ đông của ${op.name} — cổ phần ${Math.round(equity*100)}%`);
 }
 
 /* ─── Buy modal ─── */
