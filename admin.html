@@ -211,7 +211,7 @@ function renderPlayerTable(){
       <td>${p.money.toLocaleString()}$</td>
       <td>${counts.NN}/${counts.TN}/${counts.DV}</td>
       <td><b>${totalAssets(state,p).toLocaleString()}$</b></td>
-      <td>${p.status==="active"?"✅ Đang chơi":p.status==="shareholder"?"📎 Cổ đông của "+state.players[p.shareholderOf].name:"💀 Bị loại"}</td>
+      <td>${p.status==="active"?"✅ Đang chơi":p.status==="shareholder"?"📎 Cổ đông "+Math.round((p.shareholderEquity||0)*100)+"% của "+state.players[p.shareholderOf].name:"💀 Bị loại"}</td>
       <td>${weak?'<span class="tag weak">Yếu</span>':""}${mono?'<span class="tag mono">Độc quyền</span>':""}${p.jailTurns>0?`<span class="tag jail">Tù ${p.jailTurns}</span>`:""}</td>
       <td>${mono?`<button class="btn-bad" style="padding:4px 8px;font-size:11px;" onclick="toggleMonopolyRent(${p.id})">${mult===2?"Hủy x2":"Bật x2"}</button>`:"-"}</td>
     </tr>`;
@@ -315,15 +315,30 @@ document.getElementById("btnMAConfirm").addEventListener("click", async ()=>{
   const sellerId = parseInt(document.getElementById("maSeller").value);
   const price = parseInt(document.getElementById("maPrice").value);
   if(buyerId===sellerId || isNaN(price)){ alert("Chọn 2 đội khác nhau và nhập giá hợp lệ."); return; }
+  
   await mutateState(s=>{
-    const buyer=s.players[buyerId], seller=s.players[sellerId];
+    const buyer = s.players[buyerId], seller = s.players[sellerId];
+    
+    // 1. Tính toán % cổ phần dựa trên giá trị đất (y hệt bên màn hình game)
+    const transferVal = seller.properties.reduce((sum,idx)=> sum + RAW_TILES[idx][3], 0);
+    const buyerCurVal = buyer.properties.reduce((sum,idx)=> sum + RAW_TILES[idx][3], 0);
+    const totalAfter = buyerCurVal + transferVal;
+    const equity = totalAfter === 0 ? 1 : (transferVal / totalAfter);
+
+    // 2. Chuyển giao đất
     seller.properties.forEach(i=>{ s.tiles[i].owner=buyer.id; buyer.properties.push(i); });
-    seller.properties=[];
+    seller.properties = [];
+    
+    // 3. Thanh toán tiền mặt
     buyer.money -= price;
     seller.money += price;
-    seller.status="shareholder";
-    seller.shareholderOf=buyer.id;
-    addLog(s, `🤝 M&A: ${buyer.name} mua lại ${seller.name} giá ${price.toLocaleString()}$. ${seller.name} thành cổ đông.`);
+    
+    // 4. Gắn trạng thái cổ đông & tỷ lệ %
+    seller.status = "shareholder";
+    seller.shareholderOf = buyer.id;
+    seller.shareholderEquity = equity;
+    
+    addLog(s, `🤝 M&A: ${buyer.name} mua ${seller.name} giá ${price.toLocaleString()}$. ${seller.name} giữ ${Math.round(equity*100)}% cổ phần.`);
   });
   document.getElementById("maPrice").value="";
 });
@@ -347,7 +362,7 @@ document.getElementById("btnEndGame").addEventListener("click", async ()=>{
     const propVal = p.properties.reduce((sum,idx)=>sum+RAW_TILES[idx][3],0);
     html += `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.money.toLocaleString()}$</td>
       <td>${propVal.toLocaleString()}$</td><td><b>${totalAssets(state,p).toLocaleString()}$</b></td>
-      <td>${p.status==="shareholder"?"Cổ đông của "+state.players[p.shareholderOf].name:"Độc lập"}</td></tr>`;
+      <td>${p.status==="shareholder"?"Cổ đông "+Math.round((p.shareholderEquity||0)*100)+"% của "+state.players[p.shareholderOf].name:"Độc lập"}</td></tr>`;
   });
   document.getElementById("resultTable").innerHTML = html;
   document.getElementById("resultPanel").style.display = "block";
