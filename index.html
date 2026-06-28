@@ -581,7 +581,7 @@ function drawTile(tile, idx, pos){
 function drawTokens(){
   const byTile = {};
   state.players.forEach(p=>{
-    if(p.status==="eliminated"||p.status==="shareholder") return;
+    if(p.status==="eliminated" || p.status==="shareholder") return;
     const pos = displayedPos[p.id]!==undefined ? displayedPos[p.id] : p.position;
     byTile[pos]=byTile[pos]||[]; byTile[pos].push(p);
   });
@@ -590,12 +590,18 @@ function drawTokens(){
     byTile[posIdx].forEach((p,i)=>{
       const ox=(i%3)*(CELL*0.22), oy=Math.floor(i/3)*(CELL*0.22);
       const cx=pos.x+CELL*0.18+ox, cy=pos.y+CELL*0.18+oy;
+      
       ctx.save();
-      ctx.shadowColor="rgba(0,0,0,.4)"; ctx.shadowBlur=4; ctx.shadowOffsetY=2;
+      // Vẽ chấm tròn màu
       ctx.beginPath(); ctx.fillStyle=p.color;
-      ctx.arc(cx,cy,CELL*0.11,0,Math.PI*2); ctx.fill();
-      ctx.shadowBlur=0;
+      ctx.arc(cx,cy,CELL*0.14,0,Math.PI*2); ctx.fill();
       ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
+      
+      // Viết tắt tên (lấy 2 ký tự đầu)
+      ctx.fillStyle="#fff";
+      ctx.font=`700 ${CELL*0.12}px Arial`;
+      ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText(p.name.substring(0,2).toUpperCase(), cx, cy);
       ctx.restore();
     });
   });
