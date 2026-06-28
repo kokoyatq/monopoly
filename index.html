@@ -351,31 +351,76 @@ function animateTokenMove(playerId, from, to, onDone){
     steps.push(cur);
     safety++;
   }
-  let i = 0;
-  const MS_PER_STEP = 200;
-  function step(){
-    if(i >= steps.length){ displayedPos[playerId]=to; renderBoard(); onDone && onDone(); return; }
-    const prev = steps[i-1] !== undefined ? steps[i-1] : from;
-    const next = steps[i];
-    displayedPos[playerId] = next;
-    renderBoard();
-    drawGhostToken(playerId, prev, next);
-    i++;
-    setTimeout(step, MS_PER_STEP);
+
+  // Tốc độ di chuyển: 150ms cho mỗi ô (càng nhỏ càng nhanh)
+  const MS_PER_CELL = 150; 
+  const totalDuration = steps.length * MS_PER_CELL;
+  let startTime = null;
+
+  // Bật cờ (flag) báo hiệu quân cờ đang di chuyển
+  state.players[playerId].isAnimating = true;
+
+  function step(timestamp){
+    if(!startTime) startTime = timestamp;
+    const elapsed = timestamp - startTime;
+    let progress = elapsed / totalDuration;
+
+    if(progress >= 1){
+      // Khi đến đích: Cập nhật vị trí, tắt cờ animation và kết thúc
+      displayedPos[playerId] = to;
+      state.players[playerId].isAnimating = false;
+      renderBoard();
+      if(onDone) onDone();
+      return;
+    }
+
+    // --- HIỆU ỨNG EASE-OUT ---
+    // Giúp quân cờ đi nhanh lúc đầu và trượt chậm dần khi tới đích (rất chuyên nghiệp)
+    const easeProgress = 1 - Math.pow(1 - progress, 3); 
+
+    const currentStepFloat = easeProgress * steps.length;
+    const currentStepIndex = Math.floor(currentStepFloat);
+    const stepProgress = currentStepFloat - currentStepIndex;
+
+    const prevIdx = currentStepIndex === 0 ? from : steps[currentStepIndex - 1];
+    const nextIdx = steps[currentStepIndex];
+
+    const p0 = positions[prevIdx];
+    const p1 = positions[nextIdx];
+
+    // Tính toán tọa độ Pixel chính xác giữa 2 ô
+    const currentX = p0.x + (p1.x - p0.x) * stepProgress;
+    const currentY = p0.y + (p1.y - p0.y) * stepProgress;
+
+    // 1. Render lại bàn cờ tĩnh
+    renderBoard(); 
+
+    // 2. Vẽ quân cờ đang di chuyển lướt lên trên bàn cờ
+    const player = state.players[playerId];
+    const cx = currentX + CELL / 2; // Căn giữa tâm ô đất
+    const cy = currentY + CELL / 2;
+
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.4)"; 
+    ctx.shadowBlur = 4; 
+    ctx.shadowOffsetY = 2;
+    ctx.beginPath(); 
+    ctx.fillStyle = player.color;
+    ctx.arc(cx, cy, CELL * 0.11, 0, Math.PI * 2); // Kích thước dấu chấm
+    ctx.fill();
+    ctx.shadowBlur = 0; 
+    ctx.strokeStyle = "#fff"; 
+    ctx.lineWidth = 2; 
+    ctx.stroke();
+    ctx.restore();
+
+    // Tiếp tục khung hình tiếp theo
+    requestAnimationFrame(step);
   }
-  step();
+  
+  requestAnimationFrame(step);
 }
-function drawGhostToken(playerId, fromIdx, toIdx){
-  const player = state.players[playerId];
-  const p0 = positions[fromIdx], p1 = positions[toIdx];
-  const mx = (p0.x+CELL*0.18 + p1.x+CELL*0.18)/2;
-  const my = (p0.y+CELL*0.18 + p1.y+CELL*0.18)/2;
-  ctx.save();
-  ctx.globalAlpha=0.28; ctx.shadowColor=player.color; ctx.shadowBlur=10;
-  ctx.beginPath(); ctx.fillStyle=player.color;
-  ctx.arc(mx, my, CELL*0.11, 0, Math.PI*2); ctx.fill();
-  ctx.restore();
-}
+
 
 /* ─── Cảnh báo doanh nghiệp yếu ─── */
 function checkWeakWarnings(){
@@ -572,6 +617,7 @@ function drawTokens(){
   const byTile={};
   state.players.forEach(p=>{
     if(p.status==="eliminated"||p.status==="shareholder") return;
+    if(p.isAnimating) return;
     const pos=displayedPos[p.id]!==undefined?displayedPos[p.id]:p.position;
     byTile[pos]=byTile[pos]||[]; byTile[pos].push(p);
   });
@@ -797,19 +843,19 @@ function makeShareholderOf(s, shareholderId, ownerId){
 }
 
 /* ─── Buy modal ─── */
-const BUY_PRICE_CAP=300;
 const buyModal=document.getElementById("buyModal");
 function openBuyModal(idx){
   const tile=tileInfo(idx);
   const player=state.players[myPlayerId];
-  const tooExpensive=tile.price>BUY_PRICE_CAP;
-  const cantAfford=player.money<tile.price;
+  const cantAfford=player.money<tile.price; // Chỉ còn kiểm tra xem có đủ tiền hay không
+  
   document.getElementById("buyTitle").textContent=`${tile.name} (${tile.landType}) — ô ${idx}`;
   let desc=`Giá: ${tile.price.toLocaleString()}$ — Phí mặt bằng: ${tile.rent.toLocaleString()}$.\nĐội bạn có ${player.money.toLocaleString()}$.`;
-  if(tooExpensive)  desc+=`\n⛔ Doanh nghiệp này có giá trên ${BUY_PRICE_CAP}$ — không được phép mua.`;
-  else if(cantAfford) desc+=`\n⛔ Không đủ tiền.`;
+  
+  if(cantAfford) desc+=`\n⛔ Không đủ tiền.`;
+  
   document.getElementById("buyDesc").textContent=desc;
-  document.getElementById("btnBuyYes").disabled=tooExpensive||cantAfford;
+  document.getElementById("btnBuyYes").disabled=cantAfford; // Nếu thiếu tiền thì khóa nút Mua
   buyModal.classList.add("show");
 }
 document.getElementById("btnBuyYes").addEventListener("click", async ()=>{
