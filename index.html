@@ -581,7 +581,8 @@ function drawTile(tile, idx, pos){
 function drawTokens(){
   const byTile = {};
   state.players.forEach(p=>{
-    if(p.status==="eliminated" || p.status==="shareholder") return;
+    // Chỉ vẽ những người đã tham gia
+    if(!p.joined || p.status==="eliminated" || p.status==="shareholder") return;
     const pos = displayedPos[p.id]!==undefined ? displayedPos[p.id] : p.position;
     byTile[pos]=byTile[pos]||[]; byTile[pos].push(p);
   });
@@ -597,16 +598,18 @@ function drawTokens(){
       ctx.arc(cx,cy,CELL*0.14,0,Math.PI*2); ctx.fill();
       ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
       
-      // Viết tắt tên (lấy 2 ký tự đầu)
-      ctx.fillStyle="#fff";
-      ctx.font=`700 ${CELL*0.12}px Arial`;
-      ctx.textAlign="center"; ctx.textBaseline="middle";
-      ctx.fillText(p.name.substring(0,2).toUpperCase(), cx, cy);
+      // CHỈ VIẾT TÊN KHI NGƯỜI CHƠI ĐÃ JOINED
+      if(p.joined){
+        ctx.fillStyle="#fff";
+        ctx.font=`700 ${CELL*0.12}px Arial`;
+        ctx.textAlign="center"; ctx.textBaseline="middle";
+        // Lấy 2 ký tự, nếu tên là "(Trống)" thì nó sẽ không hiện vì p.joined là false
+        ctx.fillText(p.name.substring(0,2).toUpperCase(), cx, cy);
+      }
       ctx.restore();
     });
   });
 }
-
 function renderBoard(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   RAW_TILES.forEach((raw,i)=>drawTile(tileInfo(i), i, positions[i]));
