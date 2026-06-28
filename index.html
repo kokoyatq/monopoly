@@ -737,15 +737,26 @@ function resolveTile(s, player, idx){
   } else if(tile.type==="property"){
     const tileState=s.tiles[idx];
     if(tileState.owner===null){
-      // Modal will be opened by openTileModal() after animation — skip advanceTurn here
-      // (advanceTurn called in buy/skip handler)
+      // Chờ mua
     } else if(tileState.owner===player.id){
       addLog(s,`${player.name} đứng trên đất của chính mình.`);
       advanceTurn(s);
     } else {
-      const owner=s.players[tileState.owner];
-      const rent=tile.rent*(tileState.rentMultiplier||1);
-      player.money-=rent; owner.money+=rent;
+      const owner = s.players[tileState.owner];
+      const rent  = tile.rent * (tileState.rentMultiplier || 1);
+      player.money -= rent;
+      
+      let ownerReceives = rent;
+      s.players.forEach(sp=>{
+        if(sp.status === "shareholder" && sp.shareholderOf === owner.id && sp.shareholderEquity > 0){
+          const cut = Math.round(rent * sp.shareholderEquity);
+          sp.money += cut;
+          ownerReceives -= cut;
+          addLog(s, `💹 ${sp.name} nhận cổ tức ${cut.toLocaleString()}$ (${Math.round(sp.shareholderEquity*100)}%) từ ${owner.name} — ${tile.name}`);
+        }
+      });
+      
+      owner.money += ownerReceives;
       addLog(s,`${player.name} trả phí mặt bằng ${rent.toLocaleString()}$ cho ${owner.name} (${tile.name}).`);
       advanceTurn(s);
     }
