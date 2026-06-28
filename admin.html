@@ -50,6 +50,7 @@
     <button class="btn-main" id="btnNextPhase">▶️ Chuyển giai đoạn tiếp theo</button>
     <button class="btn-bad" id="btnAntiTrust">⚖️ Áp thuế chống độc quyền (GĐ4)</button>
     <button class="btn-bad" id="btnEndGame">🏁 Kết thúc & Xếp hạng</button>
+    <button class="btn-bad" id="btnResetGame" style="background:#450a0a; border:2px solid var(--bad);">🔄 Reset toàn bộ game</button>
   </div>
 </div>
 
@@ -344,6 +345,15 @@ document.getElementById("btnEndGame").addEventListener("click", async ()=>{
   });
   document.getElementById("resultTable").innerHTML = html;
   document.getElementById("resultPanel").style.display = "block";
+});
+
+document.getElementById("btnResetGame").addEventListener("click", async ()=>{
+  const ok = confirm("⚠️ Chắc chắn muốn RESET toàn bộ game? Mọi tiền/đất/log/người đã vào phòng sẽ mất hết, không hoàn tác được!");
+  if(!ok) return;
+  const fresh = createInitialState();
+  await saveState(fresh);
+  document.getElementById("resultPanel").style.display = "none";
+  alert("Đã reset xong. Người chơi cần mở lại trang index.html để vào phòng lại từ đầu.");
 });
 
 init();
