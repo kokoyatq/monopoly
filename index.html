@@ -24,11 +24,62 @@
   h1,h2,h3,.heading-font{font-family:'Baloo 2',sans-serif;}
 
   #boardWrap{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; position:relative;}
+
+  /* Canvas wrapper — needs position:relative so the dice overlay can be absolute inside it */
+  #canvasWrap{position:relative; display:inline-block;}
+
   #boardCanvas{
     background:#2f9e4f; border-radius:22px;
     box-shadow:0 12px 0 rgba(0,0,0,.25), 0 18px 40px rgba(0,0,0,.45), inset 0 0 0 6px rgba(255,255,255,.25);
     max-width:88vmin; max-height:88vmin;
+    display:block;
   }
+
+  /* ── DICE OVERLAY — centered ON THE BOARD ── */
+  #diceOverlay{
+    position:absolute;
+    top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    display:none;
+    align-items:center; justify-content:center;
+    z-index:30;
+    pointer-events:none;
+  }
+  #diceOverlay.show{display:flex;}
+  .dice-stage{display:flex; gap:28px; filter:drop-shadow(0 12px 24px rgba(0,0,0,.6));}
+  .dice3d{
+    width:88px; height:88px;
+    background:linear-gradient(145deg,#ffffff,#dfe3f0);
+    border-radius:18px;
+    box-shadow:0 10px 0 rgba(0,0,0,.25), 0 18px 30px rgba(0,0,0,.45);
+    display:grid; grid-template-columns:1fr 1fr 1fr; grid-template-rows:1fr 1fr 1fr; padding:13px;
+    animation:diceDrop .55s cubic-bezier(.34,1.56,.64,1) forwards;
+  }
+  @keyframes diceDrop{
+    0%{ transform: translateY(-180px) rotate(-30deg) scale(.5); opacity:0; }
+    60%{ transform: translateY(10px) rotate(15deg) scale(1.08); opacity:1;}
+    80%{ transform: translateY(-6px) rotate(-6deg) scale(.98);}
+    100%{ transform: translateY(0) rotate(0deg) scale(1);}
+  }
+  .pip{width:14px; height:14px; border-radius:50%; background:#3b2d63; align-self:center; justify-self:center; opacity:0; transition:opacity .1s;}
+  .dice3d.show-pips .pip.on{opacity:1;}
+
+  /* sum badge under dice */
+  #diceSumBadge{
+    position:absolute;
+    top:calc(50% + 60px); left:50%;
+    transform:translate(-50%,-50%);
+    background:rgba(20,10,50,.85);
+    color:#ffb703;
+    font-family:'Baloo 2',sans-serif;
+    font-size:28px; font-weight:800;
+    padding:6px 22px; border-radius:999px;
+    box-shadow:0 6px 20px rgba(0,0,0,.5);
+    display:none; white-space:nowrap;
+    z-index:31; pointer-events:none;
+  }
+  #diceSumBadge.show{display:block;}
+
   #phaseBar{
     display:flex; align-items:center; gap:14px; background:var(--panel); color:var(--panel-text);
     padding:10px 20px; border-radius:999px; font-size:14px; font-weight:700;
@@ -79,26 +130,7 @@
   table{width:100%;} th,td{border:1px solid #e2e0f0; padding:7px 9px; text-align:left; font-size:12.5px;} th{background:#f1ebff; color:#7b3ff2;}
   input{padding:10px; border-radius:10px; border:2px solid #e2e0f0; width:100%; font-family:'Nunito',sans-serif; font-size:14px;}
 
-  /* ---------- DICE OVERLAY ---------- */
-  #diceOverlay{position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:80; pointer-events:none;}
-  #diceOverlay.show{display:flex;}
-  .dice-stage{display:flex; gap:24px;}
-  .dice3d{
-    width:78px; height:78px; background:linear-gradient(145deg,#ffffff,#dfe3f0);
-    border-radius:16px; box-shadow:0 10px 0 rgba(0,0,0,.2), 0 18px 30px rgba(0,0,0,.4);
-    display:grid; grid-template-columns:1fr 1fr 1fr; grid-template-rows:1fr 1fr 1fr; padding:11px;
-    animation:diceDrop .55s cubic-bezier(.34,1.56,.64,1);
-  }
-  @keyframes diceDrop{
-    0%{ transform: translateY(-220px) rotate(-30deg) scale(.6); opacity:0; }
-    60%{ transform: translateY(10px) rotate(15deg) scale(1.08); opacity:1;}
-    80%{ transform: translateY(-6px) rotate(-6deg) scale(.98);}
-    100%{ transform: translateY(0) rotate(0deg) scale(1);}
-  }
-  .pip{width:13px; height:13px; border-radius:50%; background:#3b2d63; align-self:center; justify-self:center; opacity:0;}
-  .dice3d.show-pips .pip.on{opacity:1;}
-
-  /* ---------- LAND TYPE LEGEND ---------- */
+  /* land type legend */
   .legend{display:flex; gap:8px; font-size:10.5px; font-weight:700; flex-wrap:wrap;}
   .legend span{display:flex; align-items:center; gap:4px; background:#f6f5fb; padding:3px 8px; border-radius:999px;}
   .legend .sw{width:10px; height:10px; border-radius:50%;}
@@ -112,7 +144,18 @@
     <span>Giai đoạn: <b id="phaseName">-</b></span>
     <span id="suggestText" style="color:#e0680b; display:none;">⏰ Chỉ MC mới chuyển giai đoạn được</span>
   </div>
-  <canvas id="boardCanvas" width="760" height="760"></canvas>
+
+  <!-- Canvas + board-centered dice overlay live together -->
+  <div id="canvasWrap">
+    <canvas id="boardCanvas" width="760" height="760"></canvas>
+
+    <!-- Dice overlay: absolute, centered on the board -->
+    <div id="diceOverlay">
+      <div class="dice-stage" id="diceStage"></div>
+    </div>
+    <div id="diceSumBadge"></div>
+  </div>
+
   <div class="legend">
     <span><i class="sw" style="background:var(--nn)"></i>🌾 Nông nghiệp</span>
     <span><i class="sw" style="background:var(--tn)"></i>🏬 Thương nghiệp</span>
@@ -129,10 +172,7 @@
   <div id="log"></div>
 </div>
 
-<div id="diceOverlay">
-  <div class="dice-stage" id="diceStage"></div>
-</div>
-
+<!-- Modals -->
 <div class="modal-overlay show" id="lobbyScreen" style="z-index:100;">
   <div class="modal-box" style="width:480px;">
     <h3>🚪 Vào phòng — chọn đội của bạn</h3>
@@ -188,10 +228,14 @@ let selectedSlotForClaim = null;
 let resultShown = false;
 let lastSeenDiceRollId = null;
 
+// ── SEQUENCING FLAG: prevents any UI action while animation runs ──
+let sequenceLocked = false;
+
 let state = null;
 const canvas = document.getElementById("boardCanvas");
 const ctx = canvas.getContext("2d");
 
+/* ─── Board geometry ─── */
 function buildPositions(gridSize, cellPx){
   const coords = [];
   for(let c=0;c<gridSize;c++) coords.push([c,0]);
@@ -204,12 +248,13 @@ const GRID = 11;
 const CELL = 760/GRID;
 const positions = buildPositions(GRID, CELL);
 
+/* displayedPos tracks where tokens are visually (may lag behind state.position during animation) */
 const displayedPos = {};
-const animating = {};
 
 const LAND_ICON = {NN:"🌾", TN:"🏬", DV:"🏥"};
-const LAND_BG = {NN:["#a4e878","#5fae3a"], TN:["#ffc463","#e08a1c"], DV:["#d6a9fb","#9255d6"]};
+const LAND_BG   = {NN:["#a4e878","#5fae3a"], TN:["#ffc463","#e08a1c"], DV:["#d6a9fb","#9255d6"]};
 
+/* ─── Init ─── */
 async function init(){
   if(document.fonts && document.fonts.ready) await document.fonts.ready;
   state = await loadState();
@@ -223,9 +268,33 @@ async function init(){
   subscribeToChanges((newState)=>{
     const prev = state;
     state = newState;
-    handleDiceAnimation(prev);
-    handleTokenAnimations(prev);
+    // Remote state changes: animate dice then tokens then resolve modal
+    if(state.diceRollId && state.diceRollId !== lastSeenDiceRollId){
+      lastSeenDiceRollId = state.diceRollId;
+      // Only do full sequence on OTHER players' turns (my own turn already ran sequence locally)
+      if(state.lastMovedPlayerId !== myPlayerId){
+        runRemoteSequence(prev);
+      }
+    }
     renderAll();
+  });
+}
+
+/* Remote sequence for other-player moves (we see state after the fact) */
+function runRemoteSequence(prevState){
+  if(!state.lastDice) return;
+  const [d1,d2] = state.lastDice;
+  sequenceLocked = true;
+  // 1. Show dice on board
+  showDiceOnBoard(d1,d2, ()=>{
+    // 2. Animate token movement
+    const movedId = state.lastMovedPlayerId;
+    const from = prevState && prevState.players[movedId] ? prevState.players[movedId].position : state.players[movedId].position;
+    const to = state.players[movedId].position;
+    animateTokenMove(movedId, from, to, ()=>{
+      sequenceLocked = false;
+      renderAll();
+    });
   });
 }
 
@@ -240,6 +309,106 @@ function tryAutoRejoin(){
   }catch(e){}
 }
 
+/* ─── Dice PIP layout ─── */
+const PIP_LAYOUT = {
+  1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8]
+};
+function buildDiceEl(value){
+  const div = document.createElement("div");
+  div.className = "dice3d";
+  for(let i=0;i<9;i++){
+    const pip = document.createElement("div");
+    pip.className = "pip" + (PIP_LAYOUT[value].includes(i) ? " on" : "");
+    div.appendChild(pip);
+  }
+  setTimeout(()=> div.classList.add("show-pips"), 260);
+  return div;
+}
+
+/* Show dice ON the board, wait 4 s, then call cb */
+function showDiceOnBoard(d1, d2, cb){
+  const overlay = document.getElementById("diceOverlay");
+  const stage   = document.getElementById("diceStage");
+  const badge   = document.getElementById("diceSumBadge");
+
+  stage.innerHTML = "";
+  stage.appendChild(buildDiceEl(d1));
+  stage.appendChild(buildDiceEl(d2));
+
+  badge.textContent = `= ${d1+d2}`;
+  badge.classList.add("show");
+  overlay.classList.add("show");
+
+  setTimeout(()=>{
+    overlay.classList.remove("show");
+    badge.classList.remove("show");
+    if(cb) cb();
+  }, 4000);   // ← 4 giây
+}
+
+/* ─── Token animation with motion blur ─── */
+function animateTokenMove(playerId, from, to, onDone){
+  if(from === to){ onDone && onDone(); return; }
+
+  // Build path of tiles to step through
+  const steps = [];
+  let cur = from;
+  let safety = 0;
+  while(cur !== to && safety < TOTAL_TILES+1){
+    cur = (cur+1) % TOTAL_TILES;
+    steps.push(cur);
+    safety++;
+  }
+
+  let i = 0;
+  const MS_PER_STEP = 200;  // slower than before
+
+  function step(){
+    if(i >= steps.length){
+      displayedPos[playerId] = to;
+      renderBoard();
+      onDone && onDone();
+      return;
+    }
+    const prev = steps[i-1] !== undefined ? steps[i-1] : from;
+    const next = steps[i];
+    displayedPos[playerId] = next;
+
+    // Motion-blur: draw extra ghost token between prev and current
+    renderBoard();
+    drawGhostToken(playerId, prev, next);
+
+    i++;
+    setTimeout(step, MS_PER_STEP);
+  }
+  step();
+}
+
+/* Draw a faded ghost token halfway between two tile positions */
+function drawGhostToken(playerId, fromIdx, toIdx){
+  const player = state.players[playerId];
+  const p0 = positions[fromIdx];
+  const p1 = positions[toIdx];
+  const cx0 = p0.x + CELL*0.18;
+  const cy0 = p0.y + CELL*0.18;
+  const cx1 = p1.x + CELL*0.18;
+  const cy1 = p1.y + CELL*0.18;
+  // mid point
+  const mx = (cx0+cx1)/2;
+  const my = (cy0+cy1)/2;
+
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  ctx.shadowColor = player.color;
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.fillStyle = player.color;
+  ctx.arc(mx, my, CELL*0.11, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/* ─── Lobby ─── */
 function renderLobby(){
   const lobbyScreen = document.getElementById("lobbyScreen");
   if(isDisplayMode){
@@ -259,12 +428,10 @@ function renderLobby(){
     const btn = document.createElement("button");
     if(p.joined){
       btn.textContent = `✅ ${p.name} — đã có người`;
-      btn.disabled = true;
-      btn.className = "btn-skip";
+      btn.disabled = true; btn.className = "btn-skip";
     } else if(state.gameStarted){
       btn.textContent = `⛔ Ô trống — game đã bắt đầu, không vào được nữa`;
-      btn.disabled = true;
-      btn.className = "btn-skip";
+      btn.disabled = true; btn.className = "btn-skip";
     } else {
       btn.textContent = `⬜ Ô trống — bấm để chọn`;
       btn.style.background = p.color; btn.style.color = "#fff"; btn.style.boxShadow="none";
@@ -287,8 +454,7 @@ document.getElementById("btnClaimConfirm").addEventListener("click", async ()=>{
   await mutateState(s=>{
     const p = s.players[selectedSlotForClaim];
     if(p.joined || s.gameStarted){ return; }
-    p.joined = true;
-    p.name = name;
+    p.joined = true; p.name = name;
     addLog(s, `🙋 "${name}" đã vào phòng.`);
     success = true;
   });
@@ -306,16 +472,18 @@ document.getElementById("btnClaimCancel").addEventListener("click", ()=>{
   document.getElementById("claimBox").style.display = "none";
 });
 
+/* ─── Time / Phase ─── */
 function fmtTime(s){
   const m = Math.floor(s/60).toString().padStart(2,"0");
   const sec = (s%60).toString().padStart(2,"0");
   return m+":"+sec;
 }
 
+/* ─── Render all ─── */
 function renderAll(){
   if(!state) return;
   renderLobby();
-  document.getElementById("timer").textContent = fmtTime(state.elapsedSec);
+  document.getElementById("timer").textContent    = fmtTime(state.elapsedSec);
   document.getElementById("phaseName").textContent = state.phase!==undefined ? PHASE_NAMES[state.phase] : "-";
   const suggested = state.phase < PHASE_SUGGEST_SECONDS.length && state.elapsedSec >= PHASE_SUGGEST_SECONDS[state.phase];
   document.getElementById("phaseBar").classList.toggle("suggest", !!suggested);
@@ -327,76 +495,62 @@ function renderAll(){
   renderResultModal();
 }
 
+/* ─── Board drawing ─── */
 function roundRect(x,y,w,h,r){
   ctx.beginPath();
   ctx.moveTo(x+r,y);
-  ctx.arcTo(x+w,y,x+w,y+h,r);
-  ctx.arcTo(x+w,y+h,x,y+h,r);
-  ctx.arcTo(x,y+h,x,y,r);
-  ctx.arcTo(x,y,x+w,y,r);
+  ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);     ctx.arcTo(x,y,x+w,y,r);
   ctx.closePath();
 }
 function grd(x,y,h,c1,c2){
   const g = ctx.createLinearGradient(x,y,x,y+h);
-  g.addColorStop(0,c1); g.addColorStop(1,c2);
-  return g;
+  g.addColorStop(0,c1); g.addColorStop(1,c2); return g;
 }
 
 function drawTile(tile, idx, pos){
-  const pad = 2.5;
-  const x=pos.x+pad, y=pos.y+pad, w=CELL-pad*2, h=CELL-pad*2;
+  const pad=2.5, x=pos.x+pad, y=pos.y+pad, w=CELL-pad*2, h=CELL-pad*2;
   ctx.save();
   const owner = tile.type==="property" ? state.tiles[idx].owner : null;
 
   if(owner!==null){
     roundRect(x-2,y-2,w+4,h+4,10);
-    ctx.shadowColor = state.players[owner].color;
-    ctx.shadowBlur = 14;
-    ctx.fillStyle = state.players[owner].color;
-    ctx.fill();
-    ctx.shadowBlur = 0;
+    ctx.shadowColor=state.players[owner].color; ctx.shadowBlur=14;
+    ctx.fillStyle=state.players[owner].color; ctx.fill(); ctx.shadowBlur=0;
   }
 
   roundRect(x,y,w,h,9);
   let grad;
-  if(tile.type==="property"){
-    const [c1,c2] = LAND_BG[tile.landType];
-    grad = grd(x,y,h,c1,c2);
-  } else if(tile.type==="jail"){ grad = grd(x,y,h,"#6ea8fe","#2f5fd0"); }
-  else if(tile.type==="tax"){ grad = grd(x,y,h,"#ff8a8a","#d63333"); }
-  else if(tile.type==="start"){ grad = grd(x,y,h,"#7be08a","#1f9e46"); }
-  else if(tile.type==="state"){ grad = grd(x,y,h,"#7fd7e0","#1e93a3"); }
-  else { grad = grd(x,y,h,"#ccc","#999"); }
-  ctx.fillStyle = grad;
-  ctx.fill();
+  if(tile.type==="property"){ const [c1,c2]=LAND_BG[tile.landType]; grad=grd(x,y,h,c1,c2); }
+  else if(tile.type==="jail"){  grad=grd(x,y,h,"#6ea8fe","#2f5fd0"); }
+  else if(tile.type==="tax"){   grad=grd(x,y,h,"#ff8a8a","#d63333"); }
+  else if(tile.type==="start"){ grad=grd(x,y,h,"#7be08a","#1f9e46"); }
+  else if(tile.type==="state"){ grad=grd(x,y,h,"#7fd7e0","#1e93a3"); }
+  else { grad=grd(x,y,h,"#ccc","#999"); }
+  ctx.fillStyle=grad; ctx.fill();
 
   if(owner!==null){ ctx.fillStyle="rgba(0,0,0,.18)"; ctx.fill(); }
-
   ctx.strokeStyle="rgba(255,255,255,.5)"; ctx.lineWidth=1.4; ctx.stroke();
 
-  ctx.font = `${Math.max(13,CELL*0.3)}px serif`;
+  ctx.font=`${Math.max(13,CELL*0.3)}px serif`;
   ctx.textAlign="center"; ctx.textBaseline="middle";
-  let icon = "•";
-  if(tile.type==="property") icon = LAND_ICON[tile.landType];
-  if(tile.type==="jail") icon = "🚔";
-  if(tile.type==="tax") icon = "💸";
-  if(tile.type==="start") icon = "🚩";
-  if(tile.type==="state") icon = "⚡";
+  let icon="•";
+  if(tile.type==="property") icon=LAND_ICON[tile.landType];
+  if(tile.type==="jail")  icon="🚔";
+  if(tile.type==="tax")   icon="💸";
+  if(tile.type==="start") icon="🚩";
+  if(tile.type==="state") icon="⚡";
   ctx.fillText(icon, x+w/2, y+h*0.38);
 
-  const labelY = y+h*0.78;
-  ctx.font = `700 ${Math.max(8,CELL*0.135)}px 'Nunito', sans-serif`;
-  const text = tile.name;
-  const tw = ctx.measureText(text).width;
+  const labelY=y+h*0.78;
+  ctx.font=`700 ${Math.max(8,CELL*0.135)}px 'Nunito', sans-serif`;
+  const tw=ctx.measureText(tile.name).width;
   roundRect(x+w/2-tw/2-4, labelY-h*0.13, tw+8, h*0.22, 5);
-  ctx.fillStyle = "rgba(255,255,255,.88)";
-  ctx.fill();
-  ctx.fillStyle = "#2d2150";
-  ctx.fillText(text, x+w/2, labelY);
+  ctx.fillStyle="rgba(255,255,255,.88)"; ctx.fill();
+  ctx.fillStyle="#2d2150"; ctx.fillText(tile.name, x+w/2, labelY);
 
   if(owner!==null){
-    ctx.beginPath();
-    ctx.fillStyle = state.players[owner].color;
+    ctx.beginPath(); ctx.fillStyle=state.players[owner].color;
     ctx.arc(x+w-8, y+8, 6, 0, Math.PI*2); ctx.fill();
     ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.stroke();
   }
@@ -408,14 +562,13 @@ function drawTokens(){
   state.players.forEach(p=>{
     if(p.status==="eliminated"||p.status==="shareholder") return;
     const pos = displayedPos[p.id]!==undefined ? displayedPos[p.id] : p.position;
-    byTile[pos] = byTile[pos]||[];
-    byTile[pos].push(p);
+    byTile[pos]=byTile[pos]||[]; byTile[pos].push(p);
   });
   Object.keys(byTile).forEach(posIdx=>{
-    const pos = positions[posIdx];
+    const pos=positions[posIdx];
     byTile[posIdx].forEach((p,i)=>{
       const ox=(i%3)*(CELL*0.22), oy=Math.floor(i/3)*(CELL*0.22);
-      const cx = pos.x+CELL*0.18+ox, cy = pos.y+CELL*0.18+oy;
+      const cx=pos.x+CELL*0.18+ox, cy=pos.y+CELL*0.18+oy;
       ctx.save();
       ctx.shadowColor="rgba(0,0,0,.4)"; ctx.shadowBlur=4; ctx.shadowOffsetY=2;
       ctx.beginPath(); ctx.fillStyle=p.color;
@@ -426,269 +579,245 @@ function drawTokens(){
     });
   });
 }
+
 function renderBoard(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   RAW_TILES.forEach((raw,i)=>drawTile(tileInfo(i), i, positions[i]));
   drawTokens();
 }
-// TODO (3D sau này): thay toàn bộ renderBoard này bằng scene Three.js nghiêng góc.
 
-function handleTokenAnimations(prevState){
-  if(!prevState) return;
-  state.players.forEach(p=>{
-    const prevP = prevState.players[p.id];
-    if(!prevP) return;
-    if(prevP.position !== p.position && !animating[p.id]){
-      animateTokenMove(p.id, prevP.position, p.position);
-    }
-  });
-}
-function animateTokenMove(playerId, from, to){
-  animating[playerId] = true;
-  let cur = from;
-  const steps = [];
-  let safety = 0;
-  while(cur !== to && safety < TOTAL_TILES+1){
-    cur = (cur+1) % TOTAL_TILES;
-    steps.push(cur);
-    safety++;
-  }
-  let i = 0;
-  function step(){
-    if(i >= steps.length){ animating[playerId] = false; renderBoard(); return; }
-    displayedPos[playerId] = steps[i];
-    renderBoard();
-    i++;
-    setTimeout(step, 130);
-  }
-  step();
-}
-
-function handleDiceAnimation(prevState){
-  if(!state.diceRollId) return;
-  if(lastSeenDiceRollId === state.diceRollId) return;
-  lastSeenDiceRollId = state.diceRollId;
-  if(state.lastDice) playDiceAnimation(state.lastDice[0], state.lastDice[1]);
-}
-const PIP_LAYOUT = {
-  1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8]
-};
-function buildDiceEl(value){
-  const div = document.createElement("div");
-  div.className = "dice3d";
-  for(let i=0;i<9;i++){
-    const pip = document.createElement("div");
-    pip.className = "pip" + (PIP_LAYOUT[value].includes(i) ? " on" : "");
-    div.appendChild(pip);
-  }
-  setTimeout(()=> div.classList.add("show-pips"), 260);
-  return div;
-}
-function playDiceAnimation(d1,d2){
-  const overlay = document.getElementById("diceOverlay");
-  const stage = document.getElementById("diceStage");
-  stage.innerHTML = "";
-  stage.appendChild(buildDiceEl(d1));
-  stage.appendChild(buildDiceEl(d2));
-  overlay.classList.add("show");
-  setTimeout(()=> overlay.classList.remove("show"), 1500);
-}
-
+/* ─── Sidebar ─── */
 function renderPlayers(){
-  const wrap = document.getElementById("players");
-  wrap.innerHTML = "";
-  const curId = currentPlayerId(state);
+  const wrap=document.getElementById("players"); wrap.innerHTML="";
+  const curId=currentPlayerId(state);
   state.players.forEach((p,i)=>{
-    const div = document.createElement("div");
-    let cls = "player-card";
-    if(i===curId && p.status==="active") cls += " current";
-    if(p.status==="eliminated") cls += " eliminated";
-    if(p.status==="shareholder") cls += " shareholder";
-    div.className = cls;
-    let tags = "";
-    if(isWeak(state,p)) tags += `<span class="tag weak">Yếu</span>`;
-    if(isMonopoly(state,p)) tags += `<span class="tag mono">Độc quyền</span>`;
-    if(p.jailTurns>0) tags += `<span class="tag jail">Tù ${p.jailTurns}</span>`;
-    let statusText = p.status==="shareholder" ? ` (Cổ đông của ${state.players[p.shareholderOf].name})` :
-                      p.status==="eliminated" ? " (Đã bị loại)" : "";
-    div.innerHTML = `<span class="dot" style="background:${p.color}"></span><b>${p.name}</b>${statusText} ${tags}<br/>
+    const div=document.createElement("div");
+    let cls="player-card";
+    if(i===curId&&p.status==="active") cls+=" current";
+    if(p.status==="eliminated") cls+=" eliminated";
+    if(p.status==="shareholder") cls+=" shareholder";
+    div.className=cls;
+    let tags="";
+    if(isWeak(state,p)) tags+=`<span class="tag weak">Yếu</span>`;
+    if(isMonopoly(state,p)) tags+=`<span class="tag mono">Độc quyền</span>`;
+    if(p.jailTurns>0) tags+=`<span class="tag jail">Tù ${p.jailTurns}</span>`;
+    let statusText = p.status==="shareholder"?` (Cổ đông của ${state.players[p.shareholderOf].name})`:
+                     p.status==="eliminated"?" (Đã bị loại)":"";
+    div.innerHTML=`<span class="dot" style="background:${p.color}"></span><b>${p.name}</b>${statusText} ${tags}<br/>
       💰 ${p.money.toLocaleString()}$ &nbsp; 📍${p.position} &nbsp; 🏠${p.properties.length} &nbsp; Σ${totalAssets(state,p).toLocaleString()}$`;
     wrap.appendChild(div);
   });
 }
 function renderLog(){
-  document.getElementById("log").innerHTML = state.log.map(l=>`<p>${l}</p>`).join("");
+  const el=document.getElementById("log");
+  el.innerHTML=state.log.map(l=>`<p>${l}</p>`).join("");
+  el.scrollTop=el.scrollHeight;
 }
 
 function updateRollButton(){
-  const btn = document.getElementById("btnRoll");
-  if(isDisplayMode){ btn.style.display = "none"; return; }
-  if(!state.turnOrderLocked || state.gameEnded){ btn.disabled = true; return; }
-  const curId = currentPlayerId(state);
-  const isMyTurn = myPlayerId === curId;
-  btn.disabled = !isMyTurn;
-  btn.textContent = isMyTurn ? "🎲🎲 Đổ xúc xắc (lượt của bạn!)" : `🎲🎲 Đang chờ ${state.players[curId]?.name||""}`;
-  if(isMyTurn && state.players[curId].jailTurns>0){
+  const btn=document.getElementById("btnRoll");
+  if(isDisplayMode){ btn.style.display="none"; return; }
+  if(!state.turnOrderLocked||state.gameEnded||sequenceLocked){ btn.disabled=true; return; }
+  const curId=currentPlayerId(state);
+  const isMyTurn=myPlayerId===curId;
+  btn.disabled=!isMyTurn;
+  btn.textContent=isMyTurn?"🎲🎲 Đổ xúc xắc (lượt của bạn!)": `🎲🎲 Đang chờ ${state.players[curId]?.name||""}`;
+  if(isMyTurn&&state.players[curId].jailTurns>0){
     openJailModal();
   }
 }
 
 function renderResultModal(){
-  const modal = document.getElementById("resultModal");
+  const modal=document.getElementById("resultModal");
   if(!state.gameEnded){ modal.classList.remove("show"); resultShown=false; return; }
   modal.classList.add("show");
   if(resultShown) return;
-  resultShown = true;
-  const ranked = [...state.players].filter(p=>p.status!=="eliminated").sort((a,b)=>totalAssets(state,b)-totalAssets(state,a));
-  let html = `<tr><th>#</th><th>Đội</th><th>Tiền</th><th>Giá trị đất</th><th>Tổng TS</th><th>Trạng thái</th></tr>`;
+  resultShown=true;
+  const ranked=[...state.players].filter(p=>p.status!=="eliminated").sort((a,b)=>totalAssets(state,b)-totalAssets(state,a));
+  let html=`<tr><th>#</th><th>Đội</th><th>Tiền</th><th>Giá trị đất</th><th>Tổng TS</th><th>Trạng thái</th></tr>`;
   ranked.forEach((p,i)=>{
-    const propVal = p.properties.reduce((sum,idx)=>sum+RAW_TILES[idx][3],0);
-    html += `<tr><td>${i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1}</td><td>${p.name}</td><td>${p.money.toLocaleString()}$</td>
+    const propVal=p.properties.reduce((sum,idx)=>sum+RAW_TILES[idx][3],0);
+    html+=`<tr><td>${i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1}</td><td>${p.name}</td><td>${p.money.toLocaleString()}$</td>
       <td>${propVal.toLocaleString()}$</td><td><b>${totalAssets(state,p).toLocaleString()}$</b></td>
       <td>${p.status==="shareholder"?"Cổ đông của "+state.players[p.shareholderOf].name:"Độc lập"}</td></tr>`;
   });
-  document.getElementById("resultTable").innerHTML = html;
+  document.getElementById("resultTable").innerHTML=html;
 }
 
+/* ─── Roll button (MY turn) ─── */
 function roll2Dice(){ return [1+Math.floor(Math.random()*6), 1+Math.floor(Math.random()*6)]; }
 
 document.getElementById("btnRoll").addEventListener("click", async ()=>{
-  const curId = currentPlayerId(state);
-  if(myPlayerId !== curId) return;
-  const player = state.players[curId];
+  if(sequenceLocked) return;
+  const curId=currentPlayerId(state);
+  if(myPlayerId!==curId) return;
+  const player=state.players[curId];
   if(player.jailTurns>0){ openJailModal(); return; }
 
-  const [d1,d2] = roll2Dice();
-  const sum = d1+d2;
-  document.getElementById("diceResult").textContent = `🎲${d1} 🎲${d2} = ${sum}`;
+  const [d1,d2]=roll2Dice();
+  const sum=d1+d2;
+  document.getElementById("diceResult").textContent=`🎲${d1} 🎲${d2} = ${sum}`;
 
-  await mutateState(s=>{
-    const p = s.players[curId];
-    const oldPos = p.position;
-    let newPos = (oldPos+sum) % TOTAL_TILES;
-    if(newPos < oldPos){
-      p.money += PASS_START_BONUS;
-      addLog(s, `${p.name} đi qua Xuất Phát, +${PASS_START_BONUS}$`);
-    }
-    p.position = newPos;
-    s.lastDice = [d1,d2];
-    s.diceRollId = Date.now() + Math.random();
-    resolveTile(s, p, newPos);
+  // Lock UI immediately
+  sequenceLocked=true;
+  updateRollButton();
+
+  // 1. Show dice on board → wait 4 s
+  showDiceOnBoard(d1, d2, async ()=>{
+
+    // 2. Compute new position (local, for animation)
+    const oldPos=player.position;
+    let newPos=(oldPos+sum)%TOTAL_TILES;
+
+    // 3. Animate token from old to new
+    animateTokenMove(myPlayerId, oldPos, newPos, async ()=>{
+
+      // 4. Save state (triggers remote update for others)
+      await mutateState(s=>{
+        const p=s.players[curId];
+        if(newPos<oldPos||(oldPos+sum)>=TOTAL_TILES){
+          p.money+=PASS_START_BONUS;
+          addLog(s,`${p.name} đi qua Xuất Phát, +${PASS_START_BONUS}$`);
+        }
+        p.position=newPos;
+        s.lastDice=[d1,d2];
+        s.diceRollId=Date.now()+Math.random();
+        s.lastMovedPlayerId=curId;
+        resolveTile(s, p, newPos);
+      });
+
+      sequenceLocked=false;
+      renderAll();
+
+      // 5. Show the tile-action modal AFTER arriving
+      openTileModal(newPos);
+    });
   });
 });
 
+/* Resolve tile (mutates state only — does NOT open modal here) */
 function resolveTile(s, player, idx){
-  const tile = tileInfo(idx);
+  const tile=tileInfo(idx);
   if(tile.type==="start"){
-    addLog(s, `${player.name} đứng tại Xuất Phát.`);
+    addLog(s,`${player.name} đứng tại Xuất Phát.`);
     advanceTurn(s);
   } else if(tile.type==="tax"){
-    player.money -= TAX_AMOUNT;
-    addLog(s, `${player.name} nộp thuế ${TAX_AMOUNT}$.`);
+    player.money-=TAX_AMOUNT;
+    addLog(s,`${player.name} nộp thuế ${TAX_AMOUNT}$.`);
     advanceTurn(s);
   } else if(tile.type==="state"){
-    player.money -= STATE_FEE;
-    addLog(s, `${player.name} dừng tại ${tile.name} — nộp ${STATE_FEE}$.`);
+    player.money-=STATE_FEE;
+    addLog(s,`${player.name} dừng tại ${tile.name} — nộp ${STATE_FEE}$.`);
     advanceTurn(s);
   } else if(tile.type==="jail"){
-    player.jailTurns = 2;
-    addLog(s, `${player.name} bị VÀO TÙ — giữ 2 lượt.`);
+    player.jailTurns=2;
+    addLog(s,`${player.name} bị VÀO TÙ — giữ 2 lượt.`);
     advanceTurn(s);
   } else if(tile.type==="property"){
-    const tileState = s.tiles[idx];
+    const tileState=s.tiles[idx];
     if(tileState.owner===null){
-      window.__pendingBuy = {idx};
-      setTimeout(()=>openBuyModalIfPending(), 50);
+      // Modal will be opened by openTileModal() after animation — skip advanceTurn here
+      // (advanceTurn called in buy/skip handler)
     } else if(tileState.owner===player.id){
-      addLog(s, `${player.name} đứng trên đất của chính mình.`);
+      addLog(s,`${player.name} đứng trên đất của chính mình.`);
       advanceTurn(s);
     } else {
-      const owner = s.players[tileState.owner];
-      const rent = tile.rent * (tileState.rentMultiplier||1);
-      player.money -= rent;
-      owner.money += rent;
-      addLog(s, `${player.name} trả phí mặt bằng ${rent.toLocaleString()}$ cho ${owner.name} (${tile.name}).`);
+      const owner=s.players[tileState.owner];
+      const rent=tile.rent*(tileState.rentMultiplier||1);
+      player.money-=rent; owner.money+=rent;
+      addLog(s,`${player.name} trả phí mặt bằng ${rent.toLocaleString()}$ cho ${owner.name} (${tile.name}).`);
       advanceTurn(s);
     }
   }
 }
-function advanceTurn(s){ s.currentTurnPos = nextTurnIndexFor(s); }
+
+/* Open the right modal after token arrives (only for the active player) */
+function openTileModal(idx){
+  if(myPlayerId !== currentPlayerId(state) && myPlayerId !== state.lastMovedPlayerId) return;
+  const tile=tileInfo(idx);
+  if(tile.type==="property"){
+    const tileState=state.tiles[idx];
+    if(tileState.owner===null){
+      window.__pendingBuy={idx};
+      openBuyModal(idx);
+    }
+    // rent already resolved; no modal needed
+  }
+  // jail, tax, state — no extra modal, just log
+}
+
+function advanceTurn(s){ s.currentTurnPos=nextTurnIndexFor(s); }
 function nextTurnIndexFor(s){
-  let pos = s.currentTurnPos, tries=0;
+  let pos=s.currentTurnPos, tries=0;
   do{ pos=(pos+1)%s.turnOrder.length; tries++; }
-  while(s.players[s.turnOrder[pos]].status!=="active" && tries<=NUM_PLAYERS);
+  while(s.players[s.turnOrder[pos]].status!=="active"&&tries<=NUM_PLAYERS);
   return pos;
 }
 
+/* ─── Buy modal ─── */
 const buyModal=document.getElementById("buyModal");
-function openBuyModalIfPending(){
-  if(!window.__pendingBuy) return;
-  const {idx} = window.__pendingBuy;
-  const tile = tileInfo(idx);
-  const player = state.players[myPlayerId];
-  document.getElementById("buyTitle").textContent = `${tile.name} (${tile.landType}) — ô ${idx}`;
-  document.getElementById("buyDesc").textContent = `Giá: ${tile.price.toLocaleString()}$ — Phí mặt bằng: ${tile.rent.toLocaleString()}$. Đội bạn có ${player.money.toLocaleString()}$.`;
-  document.getElementById("btnBuyYes").disabled = player.money < tile.price;
+function openBuyModal(idx){
+  const tile=tileInfo(idx);
+  const player=state.players[myPlayerId];
+  document.getElementById("buyTitle").textContent=`${tile.name} (${tile.landType}) — ô ${idx}`;
+  document.getElementById("buyDesc").textContent=`Giá: ${tile.price.toLocaleString()}$ — Phí mặt bằng: ${tile.rent.toLocaleString()}$. Đội bạn có ${player.money.toLocaleString()}$.`;
+  document.getElementById("btnBuyYes").disabled=player.money<tile.price;
   buyModal.classList.add("show");
 }
 document.getElementById("btnBuyYes").addEventListener("click", async ()=>{
-  const {idx} = window.__pendingBuy;
+  const {idx}=window.__pendingBuy;
   await mutateState(s=>{
-    const p = s.players[myPlayerId];
-    const t = s.tiles[idx];
-    p.money -= RAW_TILES[idx][3];
-    t.owner = p.id;
-    p.properties.push(idx);
-    addLog(s, `${p.name} đã mua ${RAW_TILES[idx][0]} giá ${RAW_TILES[idx][3].toLocaleString()}$.`);
+    const p=s.players[myPlayerId];
+    const t=s.tiles[idx];
+    p.money-=RAW_TILES[idx][3]; t.owner=p.id; p.properties.push(idx);
+    addLog(s,`${p.name} đã mua ${RAW_TILES[idx][0]} giá ${RAW_TILES[idx][3].toLocaleString()}$.`);
     advanceTurn(s);
   });
-  window.__pendingBuy = null;
-  buyModal.classList.remove("show");
+  window.__pendingBuy=null; buyModal.classList.remove("show");
 });
 document.getElementById("btnBuyNo").addEventListener("click", async ()=>{
-  const {idx} = window.__pendingBuy;
+  const {idx}=window.__pendingBuy;
   await mutateState(s=>{
-    addLog(s, `${s.players[myPlayerId].name} không mua ${RAW_TILES[idx][0]}.`);
+    addLog(s,`${s.players[myPlayerId].name} không mua ${RAW_TILES[idx][0]}.`);
     advanceTurn(s);
   });
-  window.__pendingBuy = null;
-  buyModal.classList.remove("show");
+  window.__pendingBuy=null; buyModal.classList.remove("show");
 });
 
+/* ─── Jail modal ─── */
 const jailModal=document.getElementById("jailModal");
 function openJailModal(){
-  const player = state.players[myPlayerId];
-  document.getElementById("jailDesc").textContent = `${player.name} còn ${player.jailTurns} lượt trong tù. (Vẫn được thu phí mặt bằng đất đang sở hữu)`;
+  const player=state.players[myPlayerId];
+  document.getElementById("jailDesc").textContent=`${player.name} còn ${player.jailTurns} lượt trong tù. (Vẫn được thu phí mặt bằng đất đang sở hữu)`;
   jailModal.classList.add("show");
 }
 document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
   const [d1,d2]=roll2Dice();
-  document.getElementById("diceResult").textContent = `🎲${d1} 🎲${d2}`;
-  await mutateState(s=>{
-    const p = s.players[myPlayerId];
-    s.lastDice = [d1,d2];
-    s.diceRollId = Date.now() + Math.random();
-    if(d1===d2){ addLog(s, `${p.name} đổ đôi (${d1},${d2}) — RA TÙ ngay!`); p.jailTurns=0; }
-    else { p.jailTurns--; addLog(s, `${p.name} không đổ đôi, còn ${p.jailTurns} lượt trong tù.`); }
-    advanceTurn(s);
+  document.getElementById("diceResult").textContent=`🎲${d1} 🎲${d2}`;
+  sequenceLocked=true;
+  showDiceOnBoard(d1,d2, async ()=>{
+    await mutateState(s=>{
+      const p=s.players[myPlayerId];
+      s.lastDice=[d1,d2]; s.diceRollId=Date.now()+Math.random(); s.lastMovedPlayerId=myPlayerId;
+      if(d1===d2){ addLog(s,`${p.name} đổ đôi (${d1},${d2}) — RA TÙ ngay!`); p.jailTurns=0; }
+      else { p.jailTurns--; addLog(s,`${p.name} không đổ đôi, còn ${p.jailTurns} lượt trong tù.`); }
+      advanceTurn(s);
+    });
+    sequenceLocked=false; renderAll();
   });
   jailModal.classList.remove("show");
 });
 document.getElementById("btnJailPay").addEventListener("click", async ()=>{
   await mutateState(s=>{
-    const p = s.players[myPlayerId];
-    p.money -= 200; p.jailTurns=0;
-    addLog(s, `${p.name} trả 200$ để ra tù.`);
-    advanceTurn(s);
+    const p=s.players[myPlayerId]; p.money-=200; p.jailTurns=0;
+    addLog(s,`${p.name} trả 200$ để ra tù.`); advanceTurn(s);
   });
   jailModal.classList.remove("show");
 });
 document.getElementById("btnJailWait").addEventListener("click", async ()=>{
   await mutateState(s=>{
-    const p = s.players[myPlayerId];
-    p.jailTurns--;
-    addLog(s, `${p.name} chờ thêm 1 lượt trong tù.`);
-    advanceTurn(s);
+    const p=s.players[myPlayerId]; p.jailTurns--;
+    addLog(s,`${p.name} chờ thêm 1 lượt trong tù.`); advanceTurn(s);
   });
   jailModal.classList.remove("show");
 });
