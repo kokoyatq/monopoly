@@ -825,26 +825,41 @@ function openJailModal(){
   jailModal.classList.add("show");
 }
 document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
-  const [d1j,d2j]=roll2Dice();
-  document.getElementById("diceResult").textContent=`🎲${d1j} 🎲${d2j}`;
-  sequenceLocked=true;
-  showDiceOnBoard(d1j,d2j, async ()=>{
+  const [d1j,d2j] = roll2Dice();
+  document.getElementById("diceResult").textContent = `🎲${d1j} 🎲${d2j}`;
+  
+  sequenceLocked = true;
+  showDiceOnBoard(d1j, d2j, async ()=>{
     await mutateState(s=>{
-      const p=s.players[myPlayerId];
-      s.lastDice=[d1j,d2j]; s.diceRollId=Date.now()+Math.random(); s.lastMovedPlayerId=myPlayerId;
-      if(d1j===d2j){ addLog(s,`${p.name} đổ đôi (${d1j},${d2j}) — RA TÙ ngay!`); p.jailTurns=0; }
-      else { p.jailTurns--; addLog(s,`${p.name} không đổ đôi, còn ${p.jailTurns} lượt trong tù.`); }
+      const p = s.players[myPlayerId];
+      s.lastDice = [d1j, d2j]; 
+      s.diceRollId = Date.now() + Math.random(); 
+      s.lastMovedPlayerId = myPlayerId;
+      
+      if(d1j === d2j){ 
+        addLog(s, `${p.name} đổ đôi (${d1j},${d2j}) — RA TÙ ngay!`); 
+        p.jailTurns = 0; // Đổ trúng đôi thì xóa án tù ngay lập tức
+      } 
+      else { 
+        p.jailTurns--; // Trừ đi 1 lượt chờ
+        
+        if(p.jailTurns > 0) {
+            // Trường hợp mới trượt lần 1
+            addLog(s, `${p.name} không đổ đôi, phải tiếp tục đợi ở tù thêm ${p.jailTurns} lượt.`); 
+        } else {
+            // Trường hợp đã trượt đủ 2 lần
+            addLog(s, `⏳ ${p.name} không đổ đôi, nhưng đã HẾT 2 LƯỢT giam giữ nên sẽ được tự do vào vòng sau!`); 
+        }
+      }
+      
+      // ✅ Chuyển ngay sang lượt của đội khác
       advanceTurn(s);
     });
-    sequenceLocked=false; renderAll();
+    
+    sequenceLocked = false; 
+    renderAll();
   });
-  jailModal.classList.remove("show");
-});
-document.getElementById("btnJailPay").addEventListener("click", async ()=>{
-  await mutateState(s=>{
-    const p=s.players[myPlayerId]; p.money-=200; p.jailTurns=0;
-    addLog(s,`${p.name} trả 200$ để ra tù.`); advanceTurn(s);
-  });
+  
   jailModal.classList.remove("show");
 });
 document.getElementById("btnJailWait").addEventListener("click", async ()=>{
