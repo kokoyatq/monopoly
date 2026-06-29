@@ -211,6 +211,7 @@ function renderAlerts(){
     div.style.background = "#713f12";  // màu amber, phân biệt với đỏ âm tiền
     div.innerHTML = `<span>⚠️ ${p.name} đang YẾU — Tổng TS: ${totalAssets(state,p).toLocaleString()}$ ≤ ${WEAK_THRESHOLD}$</span>`;
     wrap.appendChild(div);
+  });
 }
 
 function renderPlayerTable(){
@@ -334,6 +335,14 @@ document.getElementById("btnMAConfirm").addEventListener("click", async ()=>{
   const price = parseInt(document.getElementById("maPrice").value);
   if(buyerId===sellerId || isNaN(price)){ alert("Chọn 2 đội khác nhau và nhập giá hợp lệ."); return; }
   
+  // Chặn lỗi logic M&A khi đội bán chưa có tài sản đất (tránh bị chia cho 0 hoặc bị thâu tóm 100% ngược)
+  const sellerTemp = state.players[sellerId];
+  const transferValTemp = sellerTemp.properties.reduce((sum,idx)=> sum + RAW_TILES[idx][3], 0);
+  if(transferValTemp === 0) {
+    alert("❌ Đội bị mua chưa sở hữu bất động sản nào (giá trị = 0). Không thể định giá cổ phần để M&A!");
+    return;
+  }
+
   await mutateState(s=>{
     const buyer = s.players[buyerId], seller = s.players[sellerId];
     
