@@ -274,19 +274,25 @@ document.getElementById("btnRandomOrder").addEventListener("click", async ()=>{
   });
 });
 
-document.getElementById("btnConfirmPriority").addEventListener("click", async ()=>{
+document.getElementById("btnConfirmPriority").addEventListener("click", async () => {
   const pid = document.getElementById("prioritySelect").value;
-  await mutateState(s=>{
-    if(pid!==""){
-      const id = parseInt(pid);
-      s.players[id].money -= PRIORITY_FEE;
-      s.turnOrder = [id, ...s.turnOrder.filter(x=>x!==id)];
-      addLog(s, `🥇 ${s.players[id].name} nộp ${PRIORITY_FEE}$ để giành quyền đi trước.`);
-    } else {
-      addLog(s, `Không đội nào nộp phí ưu tiên — giữ thứ tự random.`);
-    }
+  if (pid === "") return;
+
+  await mutateState(s => {
+    const id = parseInt(pid);
+    s.players[id].money -= PRIORITY_FEE;
+    
+    // HOÁN ĐỔI (SWAP) vị trí trong mảng lượt đi
+    const currentIdx = s.currentTurnPos;
+    const targetIdx = s.turnOrder.indexOf(id);
+    
+    const temp = s.turnOrder[currentIdx];
+    s.turnOrder[currentIdx] = s.turnOrder[targetIdx];
+    s.turnOrder[targetIdx] = temp;
+
+    // KHÔNG gán s.currentTurnPos = 0 ở đây
     s.priorityUsed = true;
-    s.currentTurnPos = 0;
+    addLog(s, `⚡ ${s.players[id].name} nộp ${PRIORITY_FEE}$ để giành quyền Ưu Tiên đi trước.`);
   });
 });
 
