@@ -656,7 +656,8 @@ function renderLog(){
 function updateRollButton(){
   const btn=document.getElementById("btnRoll");
   if(isDisplayMode){ btn.style.display="none"; return; }
-  if(!state.turnOrderLocked||state.gameEnded||sequenceLocked){ btn.disabled=true; return; }
+  if(!state.turnOrderLocked || state.gameEnded || sequenceLocked 
+   || buyModal.classList.contains("show")){ btn.disabled=true; return; }
   const curId=currentPlayerId(state);
   const isMyTurn=myPlayerId===curId;
   btn.disabled=!isMyTurn;
