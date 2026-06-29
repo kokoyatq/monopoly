@@ -34,3 +34,21 @@ function subscribeToChanges(onChange){
     })
     .subscribe();
 }
+
+// Gọi Edge Function thay vì mutate trực tiếp
+async function rollDice(roomId, playerId) {
+  const res = await fetch(
+    `${SUPABASE_URL}/functions/v1/roll-dice`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ roomId, playerId }),
+    }
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Lỗi server");
+  return data;
+}
