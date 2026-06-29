@@ -371,12 +371,33 @@ document.getElementById("btnEndGame").addEventListener("click", async ()=>{
 document.getElementById("btnResetGame").addEventListener("click", async ()=>{
   const ok = confirm("⚠️ Chắc chắn muốn RESET toàn bộ game? Mọi tiền/đất/log/người đã vào phòng sẽ mất hết, không hoàn tác được!");
   if(!ok) return;
-  const fresh = createInitialState();
-  await saveState(fresh);
-  document.getElementById("resultPanel").style.display = "none";
-  alert("Đã reset xong. Người chơi cần mở lại trang index.html để vào phòng lại từ đầu.");
-});
 
+  // 1. Hiển thị thông báo "đang xử lý" để người dùng không bấm lung tung
+  const btn = document.getElementById("btnResetGame");
+  btn.disabled = true;
+  btn.textContent = "⏳ Đang reset...";
+
+  try {
+    const fresh = createInitialState();
+    
+    // 2. Ép cập nhật state cục bộ ngay lập tức để màn hình sạch bóng
+    state = fresh;
+    render();
+    document.getElementById("resultPanel").style.display = "none";
+
+    // 3. Đợi Server xác nhận đã lưu xong
+    await saveState(fresh);
+    
+    alert("Đã reset xong!");
+  } catch (err) {
+    console.error(err);
+    alert("Có lỗi xảy ra khi kết nối server, vui lòng thử lại.");
+  } finally {
+    // 4. Mở lại nút bấm
+    btn.disabled = false;
+    btn.textContent = "🔄 Reset toàn bộ game";
+  }
+});
 init();
 </script>
 </body>
