@@ -213,6 +213,7 @@
 <script>
 const params = new URLSearchParams(location.search);
 const isDisplayMode = params.get("mode") === "display";
+const GAME_ID = params.get("room") || "default_room";
 
 const LOBBY_KEY = "ctdq_my_slot";
 let myPlayerId = null;
@@ -249,6 +250,26 @@ async function init(){
   if(!state || !state.initialized){
     state = createInitialState();
     await saveState(state);
+  } else {
+    // 🛠️ TỰ ĐỘNG VÁ LỖI (Self-healing): Nếu là phòng game cũ thiếu dữ liệu 'type', 'name', 'rent'
+    // Frontend sẽ tự động ép cấu hình mới vào và lưu đè lên DB, bạn không cần đổi ID phòng nữa!
+    let needFix = false;
+    state.tiles = state.tiles.map((t, idx) => {
+      if (!t.type) {
+        const info = tileInfo(idx);
+        needFix = true;
+        return {
+          ...t,
+          type: info.type,
+          name: info.name,
+          rent: info.rent || 0
+        };
+      }
+      return t;
+    });
+    if (needFix) {
+      await saveState(state);
+    }
   }
   state.players.forEach(p=> displayedPos[p.id] = p.position);
   tryAutoRejoin();
@@ -765,6 +786,7 @@ document.getElementById("btnBuyYes").addEventListener("click", async ()=>{
     const p=s.players[myPlayerId]; const t=s.tiles[idx];
     p.money-=RAW_TILES[idx][3]; t.owner=p.id; p.properties.push(idx);
     addLog(s,`${p.name} đã mua ${RAW_TILES[idx][0]} giá ${RAW_TILES[idx][3].toLocaleString()}$.`);
+    s.pendingBuyTile = null;
     advanceTurn(s);
   });
   window.__pendingBuy=null; buyModal.classList.remove("show");
@@ -773,6 +795,7 @@ document.getElementById("btnBuyNo").addEventListener("click", async ()=>{
   const {idx}=window.__pendingBuy;
   await mutateState(s=>{
     addLog(s,`${s.players[myPlayerId].name} không mua ${RAW_TILES[idx][0]}.`);
+    s.pendingBuyTile = null;
     advanceTurn(s);
   });
   window.__pendingBuy=null; buyModal.classList.remove("show");
