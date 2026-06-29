@@ -18,12 +18,16 @@ async function saveState(state){
   if(error){ console.error("saveState error", error); alert("Lỗi lưu dữ liệu: " + error.message); }
 }
 
-// Đọc-sửa-ghi an toàn: luôn load state mới nhất ngay trước khi sửa, tránh ghi đè dữ liệu cũ
+// Đọc-sửa-ghi: dùng cho các thao tác KHÔNG ảnh hưởng lượt chơi (join phòng, đổi tên, admin...).
+// ĐÃ SỬA: trả về state mới để nơi gọi cập nhật lại biến state toàn cục, tránh render với data cũ.
+// Lưu ý: hàm này KHÔNG validate lượt/quyền — không dùng cho roll/jail/mua đất nữa, các action đó
+// đã chuyển hết qua gameAction() (Edge Function, có validate + chống ghi đè race condition).
 async function mutateState(mutatorFn){
   const state = await loadState();
-  if(!state) return;
+  if(!state) return null;
   mutatorFn(state);
   await saveState(state);
+  return state;
 }
 
 function subscribeToChanges(onChange){
@@ -35,8 +39,9 @@ function subscribeToChanges(onChange){
     .subscribe();
 }
 
-// Gọi Edge Function thay vì mutate trực tiếp
-async function rollDice(roomId, playerId) {
+// Gọi Edge Function cho mọi action có liên quan đến lượt chơi (roll, jail, mua đất...).
+// Server tự đọc state mới nhất, validate đúng lượt + đủ điều kiện, tính toán, rồi ghi đè 1 lần.
+async function gameAction(roomId, playerId, action) {
   const res = await fetch(
     `${SUPABASE_URL}/functions/v1/roll-dice`,
     {
@@ -45,10 +50,15 @@ async function rollDice(roomId, playerId) {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({ roomId, playerId }),
+      body: JSON.stringify({ roomId, playerId, action }),
     }
   );
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Lỗi server");
   return data;
+}
+
+// Giữ lại để tương thích — roll lượt thường, tương đương gameAction(..., "roll")
+async function rollDice(roomId, playerId) {
+  return gameAction(roomId, playerId, "roll");
 }

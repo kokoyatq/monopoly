@@ -202,10 +202,10 @@
   <div class="modal-box">
     <h3>🚔 Đang ở trong tù</h3>
     <p id="jailDesc"></p>
-    <p style="font-size:12px; color:#888; margin-top:0;">Ra đôi → thoát + di chuyển ngay. Không ra đôi → mất lượt.</p>
     <div class="row-flex">
-      <button class="btn-buy" id="btnJailRoll">🎲 Tung xúc xắc</button>
+      <button class="btn-buy" id="btnJailRoll">🎲 Đổ xúc xắc (đôi = ra ngay)</button>
       <button class="btn-bad" id="btnJailPay">💵 Trả 200$ ra ngay</button>
+      <button class="btn-skip" id="btnJailWait">⏳ Chờ thêm lượt</button>
     </div>
   </div>
 </div>
@@ -656,8 +656,7 @@ function renderLog(){
 function updateRollButton(){
   const btn=document.getElementById("btnRoll");
   if(isDisplayMode){ btn.style.display="none"; return; }
-  if(!state.turnOrderLocked || state.gameEnded || sequenceLocked 
-   || buyModal.classList.contains("show")){ btn.disabled=true; return; }
+  if(!state.turnOrderLocked||state.gameEnded||sequenceLocked){ btn.disabled=true; return; }
   const curId=currentPlayerId(state);
   const isMyTurn=myPlayerId===curId;
   btn.disabled=!isMyTurn;
@@ -761,142 +760,86 @@ function openBuyModal(idx){
   buyModal.classList.add("show");
 }
 document.getElementById("btnBuyYes").addEventListener("click", async ()=>{
-  const {idx}=window.__pendingBuy;
-  await mutateState(s=>{
-    const p=s.players[myPlayerId]; const t=s.tiles[idx];
-    p.money-=RAW_TILES[idx][3]; t.owner=p.id; p.properties.push(idx);
-    addLog(s,`${p.name} đã mua ${RAW_TILES[idx][0]} giá ${RAW_TILES[idx][3].toLocaleString()}$.`);
-    s.pendingBuyTile = null;
-    advanceTurn(s);
-  });
+  if(sequenceLocked) return;
+  sequenceLocked=true; updateRollButton();
+  try{
+    const result = await gameAction(GAME_ID, myPlayerId, "buy-yes");
+    state = result.state;
+  } catch(err){
+    alert("Lỗi server: " + err.message);
+  }
+  sequenceLocked=false;
   window.__pendingBuy=null; buyModal.classList.remove("show");
+  renderAll();
 });
 document.getElementById("btnBuyNo").addEventListener("click", async ()=>{
-  const {idx}=window.__pendingBuy;
-  await mutateState(s=>{
-    addLog(s,`${s.players[myPlayerId].name} không mua ${RAW_TILES[idx][0]}.`);
-    s.pendingBuyTile = null;
-    advanceTurn(s);
-  });
+  if(sequenceLocked) return;
+  sequenceLocked=true; updateRollButton();
+  try{
+    const result = await gameAction(GAME_ID, myPlayerId, "buy-no");
+    state = result.state;
+  } catch(err){
+    alert("Lỗi server: " + err.message);
+  }
+  sequenceLocked=false;
   window.__pendingBuy=null; buyModal.classList.remove("show");
+  renderAll();
 });
 
 /* ─── Jail modal ─── */
 const jailModal=document.getElementById("jailModal");
 function openJailModal(){
   const player=state.players[myPlayerId];
-  const turns=player.jailTurns;
-  document.getElementById("jailDesc").textContent=
-    `${player.name} còn ${turns} lượt trong tù. Tung xúc xắc — nếu ra đôi sẽ thoát và di chuyển ngay.`;
+  document.getElementById("jailDesc").textContent=`${player.name} còn ${player.jailTurns} lượt trong tù.`;
   jailModal.classList.add("show");
 }
-
 document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
-  const [d1j,d2j]=roll2Dice();
-  const isDoubles=d1j===d2j;
-  document.getElementById("diceResult").textContent=
-    `🎲${d1j} 🎲${d2j}${isDoubles?" 🎉 ĐÔI!":""}`;
-  sequenceLocked=true;
+  if(sequenceLocked) return;
   jailModal.classList.remove("show");
+  sequenceLocked=true; updateRollButton();
 
-  showDiceOnBoard(d1j, d2j, async ()=>{
+  let result;
+  try{
+    result = await gameAction(GAME_ID, myPlayerId, "jail-roll");
+  } catch(err){
+    sequenceLocked=false; updateRollButton();
+    alert("Lỗi server: " + err.message);
+    return;
+  }
 
-    if(isDoubles){
-      /* ── Ra đôi: thoát tù + di chuyển + xử lý ô như bình thường ── */
-      const oldPos=state.players[myPlayerId].position;
-      const sum=d1j+d2j;
-      const newPos=(oldPos+sum)%TOTAL_TILES;
+  const [d1j,d2j] = result.dice;
+  document.getElementById("diceResult").textContent=`🎲${d1j} 🎲${d2j}`;
+  state = result.state;
 
-      await mutateState(s=>{
-        const p=s.players[myPlayerId];
-        p.jailTurns=0;
-        s.lastDice=[d1j,d2j];
-        s.diceRollId=Date.now()+Math.random();
-        s.lastMovedPlayerId=myPlayerId;
-        s.pendingBuyTile=null; // reset cờ cũ
-
-        // Qua Xuất Phát?
-        if(oldPos+sum>=TOTAL_TILES){
-          p.money+=PASS_START_BONUS;
-          addLog(s,`${p.name} đi qua Xuất Phát, +${PASS_START_BONUS}$`);
-        }
-        p.position=newPos;
-        addLog(s,`🎉 ${p.name} tung ĐÔI (${d1j},${d2j}) — ra tù và di chuyển ${sum} ô!`);
-
-        // Xử lý ô đất (nhân bản logic Edge Function để jail roll hoạt động offline-safe)
-        const tile=s.tiles[newPos];
-        if(tile.type==="tax"){
-          p.money-=TAX_AMOUNT;
-          addLog(s,`${p.name} nộp thuế ${TAX_AMOUNT}$`);
-          advanceTurn(s);
-        } else if(tile.type==="state"){
-          p.money-=STATE_FEE;
-          addLog(s,`${p.name} dừng tại ${tileInfo(newPos).name} — nộp phí ${STATE_FEE}$`);
-          advanceTurn(s);
-        } else if(tile.type==="jail"){
-          p.jailTurns=2;
-          addLog(s,`${p.name} vào tù 2 lượt`);
-          advanceTurn(s);
-        } else if(tile.type==="property"){
-          if(tile.owner===null){
-            s.pendingBuyTile=newPos; // chờ người chơi quyết định — KHÔNG gọi advanceTurn
-          } else if(tile.owner===myPlayerId){
-            addLog(s,`${p.name} đứng trên đất của mình`);
-            advanceTurn(s);
-          } else {
-            const rent=(tile.rent||0)*(tile.rentMultiplier||1);
-            p.money-=rent;
-            let ownerReceives=rent;
-            s.players.forEach(sp=>{
-              if(sp.status==="shareholder"&&sp.shareholderOf===tile.owner&&sp.shareholderEquity>0){
-                const cut=Math.round(rent*sp.shareholderEquity);
-                sp.money+=cut; ownerReceives-=cut;
-                addLog(s,`💹 ${sp.name} nhận cổ tức ${cut}$`);
-              }
-            });
-            s.players[tile.owner].money+=ownerReceives;
-            addLog(s,`${p.name} trả ${rent}$ tiền thuê cho ${s.players[tile.owner].name}`);
-            advanceTurn(s);
-          }
-        } else {
-          advanceTurn(s); // start hoặc ô khác
-        }
-      });
-
-      animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
-        sequenceLocked=false;
-        renderAll();
-        checkPendingBuy(); // mở buy modal nếu pendingBuyTile được set ở trên
-      });
-
-    } else {
-      /* ── Không ra đôi: giảm jailTurns, qua lượt ── */
-      await mutateState(s=>{
-        const p=s.players[myPlayerId];
-        s.lastDice=[d1j,d2j];
-        s.diceRollId=Date.now()+Math.random();
-        s.lastMovedPlayerId=myPlayerId;
-        p.jailTurns=Math.max(0, p.jailTurns-1);
-        if(p.jailTurns===0){
-          addLog(s,`${p.name} không ra đôi — hết hạn tù, sẽ đi tự do lượt sau.`);
-        } else {
-          addLog(s,`${p.name} không ra đôi (${d1j},${d2j}) — còn ${p.jailTurns} lượt trong tù.`);
-        }
-        advanceTurn(s);
-      });
-      sequenceLocked=false;
-      renderAll();
-    }
+  showDiceOnBoard(d1j,d2j, ()=>{
+    sequenceLocked=false;
+    renderAll();
   });
 });
-
 document.getElementById("btnJailPay").addEventListener("click", async ()=>{
+  if(sequenceLocked) return;
+  sequenceLocked=true; updateRollButton();
+  try{
+    const result = await gameAction(GAME_ID, myPlayerId, "jail-pay");
+    state = result.state;
+  } catch(err){
+    alert("Lỗi server: " + err.message);
+  }
+  sequenceLocked=false;
   jailModal.classList.remove("show");
-  await mutateState(s=>{
-    const p=s.players[myPlayerId]; p.money-=200; p.jailTurns=0;
-    addLog(s,`${p.name} trả 200$ để ra tù sớm.`);
-    advanceTurn(s);
-  });
+  renderAll();
+});
+document.getElementById("btnJailWait").addEventListener("click", async ()=>{
+  if(sequenceLocked) return;
+  sequenceLocked=true; updateRollButton();
+  try{
+    const result = await gameAction(GAME_ID, myPlayerId, "jail-wait");
+    state = result.state;
+  } catch(err){
+    alert("Lỗi server: " + err.message);
+  }
+  sequenceLocked=false;
+  jailModal.classList.remove("show");
   renderAll();
 });
 
