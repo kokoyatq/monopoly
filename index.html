@@ -545,7 +545,9 @@ function drawTile(tile, idx, pos){
   else { grad=grd(x,y,h,"#ccc","#999"); }
   ctx.fillStyle=grad; ctx.fill();
   if(owner!==null){ ctx.fillStyle="rgba(0,0,0,.18)"; ctx.fill(); }
-  ctx.strokeStyle="rgba(255,255,255,.5)"; ctx.lineWidth=1.4; ctx.stroke();
+  ctx.strokeStyle="rgba(255,255,255,.5)"; ctx.lineWidth=1.4; stroke();
+  
+  // 1. Vẽ Icon lớn ở giữa ô cờ (Đẩy nhẹ lên trên một chút để nhường chỗ cho text bên dưới)
   ctx.font=`${Math.max(13,CELL*0.3)}px serif`;
   ctx.textAlign="center"; ctx.textBaseline="middle";
   let icon="•";
@@ -554,8 +556,22 @@ function drawTile(tile, idx, pos){
   if(tile.type==="tax")   icon="💸";
   if(tile.type==="start") icon="🚩";
   if(tile.type==="state") icon="⚡";
-  ctx.fillText(icon, x+w/2, y+h*0.38);
-  const labelY=y+h*0.78;
+  ctx.fillText(icon, x+w/2, y+h*0.33); // Đổi từ 0.38 lên 0.33 để thoáng ô cờ
+
+  // 2. 🔥 THÊM: Vẽ nhãn hiển thị thông số Giá mua và Giá thuê (Gọn gàng ngay dưới Icon)
+  if (tile.type === "property") {
+    ctx.font = `600 ${Math.max(7.5, CELL * 0.11)}px 'Nunito', sans-serif`;
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    // Hiển thị định dạng trực quan: 💰250 / 🏠90
+    ctx.fillText(`💰${tile.price} / 🏠${tile.rent}`, x+w/2, y+h*0.56);
+  } else if (tile.type === "tax" || tile.type === "state") {
+    ctx.font = `700 ${Math.max(8, CELL * 0.12)}px 'Nunito', sans-serif`;
+    ctx.fillStyle = "#fff";
+    ctx.fillText(`-100$`, x+w/2, y+h*0.56);
+  }
+
+  // 3. Vẽ nhãn tên ô cờ (Giữ nguyên cấu hình bo góc màu trắng của bạn)
+  const labelY=y+h*0.82; // Đẩy nhẹ xuống dưới đáy ô cờ một chút (từ 0.78 sang 0.82)
   ctx.font=`700 ${Math.max(8,CELL*0.135)}px 'Nunito', sans-serif`;
   const tw=ctx.measureText(tile.name).width;
   roundRect(x+w/2-tw/2-4, labelY-h*0.13, tw+8, h*0.22, 5);
