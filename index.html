@@ -893,14 +893,14 @@ function openJailModal(){
   jailModal.classList.add("show");
 }
 document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
-  const [d1,d2]=roll2Dice();
-  document.getElementById("diceResult").textContent=`🎲${d1} 🎲${d2}`;
+  const [d1j,d2j]=roll2Dice();
+  document.getElementById("diceResult").textContent=`🎲${d1j} 🎲${d2j}`;
   sequenceLocked=true;
-  showDiceOnBoard(d1,d2, async ()=>{
+  showDiceOnBoard(d1j,d2j, async ()=>{
     await mutateState(s=>{
       const p=s.players[myPlayerId];
-      s.lastDice=[d1,d2]; s.diceRollId=Date.now()+Math.random(); s.lastMovedPlayerId=myPlayerId;
-      if(d1===d2){ addLog(s,`${p.name} đổ đôi (${d1},${d2}) — RA TÙ ngay!`); p.jailTurns=0; }
+      s.lastDice=[d1j,d2j]; s.diceRollId=Date.now()+Math.random(); s.lastMovedPlayerId=myPlayerId;
+      if(d1j===d2j){ addLog(s,`${p.name} đổ đôi (${d1j},${d2j}) — RA TÙ ngay!`); p.jailTurns=0; }
       else { p.jailTurns--; addLog(s,`${p.name} không đổ đôi, còn ${p.jailTurns} lượt trong tù.`); }
       advanceTurn(s);
     });
