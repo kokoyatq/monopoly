@@ -732,25 +732,33 @@ document.getElementById("btnRoll").addEventListener("click", async ()=>{
   const sum=d1+d2;
   document.getElementById("diceResult").textContent=`🎲${d1} 🎲${d2} = ${sum}`;
   sequenceLocked=true; updateRollButton();
-  showDiceOnBoard(d1, d2, async ()=>{
-    const oldPos=player.position;
-    const newPos=(oldPos+sum)%TOTAL_TILES;
-    animateTokenMove(myPlayerId, oldPos, newPos, async ()=>{
-      await mutateState(s=>{
-        const p=s.players[curId];
-        if(newPos<oldPos||(oldPos+sum)>=TOTAL_TILES){
-          p.money+=PASS_START_BONUS;
-          addLog(s,`${p.name} đi qua Xuất Phát, +${PASS_START_BONUS}$`);
-        }
-        p.position=newPos;
-        s.lastDice=[d1,d2];
-        s.diceRollId=Date.now()+Math.random();
-        s.lastMovedPlayerId=curId;
-        resolveTile(s, p, newPos);
-      });
-      sequenceLocked=false; renderAll();
-      openTileModal(newPos);
-    });
+  // Gọi server — server tính toán, trả về state mới
+let result;
+try {
+  result = await rollDice(currentRoomId, myPlayerId);
+} catch(err) {
+  sequenceLocked = false;
+  updateRollButton();
+  alert("Lỗi: " + err.message);
+  return;
+}
+
+const [d1, d2] = result.dice;
+const newPos = result.state.players[myPlayerId].position;
+const oldPos = player.position;
+
+document.getElementById("diceResult").textContent = `🎲${d1} 🎲${d2} = ${d1+d2}`;
+
+// Hiện xúc xắc 4 giây rồi animate token
+showDiceOnBoard(d1, d2, ()=>{
+  animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
+    sequenceLocked = false;
+    renderAll();
+    // Mở modal mua đất nếu server báo có pendingBuyTile
+    if(result.state.pendingBuyTile !== undefined && result.state.pendingBuyTile !== null){
+      window.__pendingBuy = { idx: result.state.pendingBuyTile };
+      openBuyModal(result.state.pendingBuyTile);
+    }
   });
 });
 
