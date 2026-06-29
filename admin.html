@@ -117,9 +117,14 @@ async function init(){
 }
 
 async function tick(){
-  // chỉ tăng giờ nếu game đã bắt đầu (đã khóa thứ tự) và chưa kết thúc
-  if(state && state.turnOrderLocked && !state.gameEnded){
-    await mutateState(s=>{ s.elapsedSec++; });
+  // Chỉ chạy khi game đang diễn ra và tab này đang hiển thị (tránh tab nền gây nhiễu)
+  if(!state || !state.turnOrderLocked || state.gameEnded || document.hidden) return;
+  // Tính elapsed từ timestamp gốc — mọi tab admin đều ghi cùng 1 giá trị nên không bị đếm kép
+  if(state.gameStartedAt){
+    await mutateState(s=>{
+      if(!s.gameStartedAt || !s.turnOrderLocked || s.gameEnded) return;
+      s.elapsedSec = Math.floor((Date.now() - s.gameStartedAt) / 1000);
+    });
   }
 }
 
@@ -173,13 +178,17 @@ function renderPriorityPanel(){
 
 function renderAlerts(){
   const wrap = document.getElementById("alerts");
-  const list = state.players.filter(p=>p.status==="active" && p.money<0);
-  if(list.length===0){ wrap.innerHTML = "<i>Không có cảnh báo nào.</i>"; return; }
+  const negMoney = state.players.filter(p=>p.status==="active" && p.money<0);
+  // isWeak = tổng tài sản <= 300$; tách riêng để không hiển thị trùng với nhóm âm tiền
+  const weakOnly = state.players.filter(p=>isWeak(state,p) && p.money>=0);
+  if(negMoney.length===0 && weakOnly.length===0){ wrap.innerHTML = "<i>Không có cảnh báo nào.</i>"; return; }
   wrap.innerHTML = "";
-  list.forEach(p=>{
+
+  // Nhóm 1: âm tiền → có nút loại
+  negMoney.forEach(p=>{
     const div = document.createElement("div");
     div.className = "alert";
-    div.innerHTML = `<span>⚠️ ${p.name} âm tiền (${p.money.toLocaleString()}$) — không đủ trả phí/thuế!</span>`;
+    div.innerHTML = `<span>🔴 ${p.name} âm tiền (${p.money.toLocaleString()}$) — không đủ trả phí/thuế!</span>`;
     const btn = document.createElement("button");
     btn.className = "btn-bad"; btn.style.flex="0"; btn.textContent="Xác nhận loại";
     btn.onclick = async ()=>{
@@ -194,6 +203,14 @@ function renderAlerts(){
     div.appendChild(btn);
     wrap.appendChild(div);
   });
+
+  // Nhóm 2: yếu (tổng TS thấp) nhưng chưa âm → cảnh báo để MC theo dõi
+  weakOnly.forEach(p=>{
+    const div = document.createElement("div");
+    div.className = "alert";
+    div.style.background = "#713f12";  // màu amber, phân biệt với đỏ âm tiền
+    div.innerHTML = `<span>⚠️ ${p.name} đang YẾU — Tổng TS: ${totalAssets(state,p).toLocaleString()}$ ≤ ${WEAK_THRESHOLD}$</span>`;
+    wrap.appendChild(div);
 }
 
 function renderPlayerTable(){
@@ -269,30 +286,25 @@ document.getElementById("btnRandomOrder").addEventListener("click", async ()=>{
     s.turnOrder = order;
     s.turnOrderLocked = true;
     s.gameStarted = true;
+    s.gameStartedAt = Date.now();  // mốc thời gian để tick() tính elapsedSec chính xác
     addLog(s, `🎲 MC đã random & khóa thứ tự đi (${joined.length} đội): ${order.map(id=>s.players[id].name).join(" → ")}`);
     addLog(s, `Hỏi: có đội nào muốn nộp 50$ để đi trước không?`);
   });
 });
 
-document.getElementById("btnConfirmPriority").addEventListener("click", async () => {
+document.getElementById("btnConfirmPriority").addEventListener("click", async ()=>{
   const pid = document.getElementById("prioritySelect").value;
-  if (pid === "") return;
-
-  await mutateState(s => {
-    const id = parseInt(pid);
-    s.players[id].money -= PRIORITY_FEE;
-    
-    // HOÁN ĐỔI (SWAP) vị trí trong mảng lượt đi
-    const currentIdx = s.currentTurnPos;
-    const targetIdx = s.turnOrder.indexOf(id);
-    
-    const temp = s.turnOrder[currentIdx];
-    s.turnOrder[currentIdx] = s.turnOrder[targetIdx];
-    s.turnOrder[targetIdx] = temp;
-
-    // KHÔNG gán s.currentTurnPos = 0 ở đây
+  await mutateState(s=>{
+    if(pid!==""){
+      const id = parseInt(pid);
+      s.players[id].money -= PRIORITY_FEE;
+      s.turnOrder = [id, ...s.turnOrder.filter(x=>x!==id)];
+      addLog(s, `🥇 ${s.players[id].name} nộp ${PRIORITY_FEE}$ để giành quyền đi trước.`);
+    } else {
+      addLog(s, `Không đội nào nộp phí ưu tiên — giữ thứ tự random.`);
+    }
     s.priorityUsed = true;
-    addLog(s, `⚡ ${s.players[id].name} nộp ${PRIORITY_FEE}$ để giành quyền Ưu Tiên đi trước.`);
+    s.currentTurnPos = 0;
   });
 });
 

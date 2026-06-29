@@ -182,6 +182,7 @@ function createInitialState(){
     initialized:true,
     phase:0,
     elapsedSec:0,
+    gameStartedAt:null,   // timestamp ms — dùng để tính giờ chính xác, tránh đếm kép
     gameStarted:false,
     turnOrder:[],
     turnOrderLocked:false,

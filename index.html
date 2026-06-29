@@ -202,10 +202,10 @@
   <div class="modal-box">
     <h3>🚔 Đang ở trong tù</h3>
     <p id="jailDesc"></p>
+    <p style="font-size:12px; color:#888; margin-top:0;">Ra đôi → thoát + di chuyển ngay. Không ra đôi → mất lượt.</p>
     <div class="row-flex">
-      <button class="btn-buy" id="btnJailRoll">🎲 Đổ xúc xắc (đôi = ra ngay)</button>
+      <button class="btn-buy" id="btnJailRoll">🎲 Tung xúc xắc</button>
       <button class="btn-bad" id="btnJailPay">💵 Trả 200$ ra ngay</button>
-      <button class="btn-skip" id="btnJailWait">⏳ Chờ thêm lượt</button>
     </div>
   </div>
 </div>
@@ -274,6 +274,8 @@ async function init(){
   state.players.forEach(p=> displayedPos[p.id] = p.position);
   tryAutoRejoin();
   renderAll();
+  // Khôi phục buy modal nếu người chơi reload trong lúc đang chờ quyết định mua đất
+  checkPendingBuy();
   subscribeToChanges((newState)=>{
     const prev = state;
     state = newState;
@@ -283,7 +285,7 @@ async function init(){
       const isMine = myPlayerId !== null && state.lastMovedPlayerId === myPlayerId;
       if(!isMine){ runRemoteSequence(prev); return; }
     }
-    if(!sequenceLocked) renderAll();
+    if(!sequenceLocked){ renderAll(); checkPendingBuy(); }
   });
 }
 
@@ -403,6 +405,9 @@ function checkWeakWarnings(){
   if(!state) return;
   const banner = document.getElementById("weakBanner");
   const weakNow = state.players.filter(p=> p.status==="active" && isWeak(state,p));
+  const weakIds = new Set(weakNow.map(p=>p.id));
+  // Xóa khỏi warnedWeak những đội đã hồi phục → lần sau yếu lại vẫn bật cảnh báo
+  [...warnedWeak].forEach(id=>{ if(!weakIds.has(id)) warnedWeak.delete(id); });
   weakNow.forEach(p=>{
     if(!warnedWeak.has(p.id)){ warnedWeak.add(p.id); flashWeakAlert(p); }
   });
@@ -562,8 +567,10 @@ function drawTile(tile, idx, pos){
   if (tile.type === "property") {
     ctx.font = `600 ${Math.max(7.5, CELL * 0.11)}px 'Nunito', sans-serif`;
     ctx.fillStyle = "rgba(255,255,255,0.95)";
-    // Hiển thị định dạng trực quan: 💰250 / 🏠90
-    ctx.fillText(`💰${tile.price} / 🏠${tile.rent}`, x+w/2, y+h*0.56);
+    // Hiển thị rent thực tế (đã nhân hệ số x2 nếu có), để người chơi thấy đúng số bị tính
+    const displayRent = tile.rent * (state.tiles[idx].rentMultiplier || 1);
+    const rentLabel = (state.tiles[idx].rentMultiplier||1) > 1 ? `🏠${displayRent}⚠️` : `🏠${displayRent}`;
+    ctx.fillText(`💰${tile.price} / ${rentLabel}`, x+w/2, y+h*0.56);
   } else if (tile.type === "tax" || tile.type === "state") {
     ctx.font = `700 ${Math.max(8, CELL * 0.12)}px 'Nunito', sans-serif`;
     ctx.fillStyle = "#fff";
@@ -654,7 +661,7 @@ function updateRollButton(){
   const isMyTurn=myPlayerId===curId;
   btn.disabled=!isMyTurn;
   btn.textContent=isMyTurn?"🎲🎲 Đổ xúc xắc (lượt của bạn!)":`🎲🎲 Đang chờ ${state.players[curId]?.name||""}`;
-  if(isMyTurn&&state.players[curId].jailTurns>0) openJailModal();
+  if(isMyTurn&&state.players[curId].jailTurns>0&&!jailModal.classList.contains("show")) openJailModal();
 }
 function renderResultModal(){
   const modal=document.getElementById("resultModal");
@@ -718,69 +725,25 @@ document.getElementById("btnRoll").addEventListener("click", async ()=>{
   });
 }); // ← đóng event listener đúng chỗ
 
-/* ─── Tile resolution (dùng cho mutateState cũ, vẫn giữ lại) ─── */
-function resolveTile(s, player, idx){
-  const tile=tileInfo(idx);
-  if(tile.type==="start"){
-    addLog(s,`${player.name} đứng tại Xuất Phát.`); advanceTurn(s);
-  } else if(tile.type==="tax"){
-    player.money-=TAX_AMOUNT;
-    addLog(s,`${player.name} nộp thuế ${TAX_AMOUNT}$.`); advanceTurn(s);
-  } else if(tile.type==="state"){
-    player.money-=STATE_FEE;
-    addLog(s,`${player.name} dừng tại ${tile.name} — nộp ${STATE_FEE}$.`); advanceTurn(s);
-  } else if(tile.type==="jail"){
-    player.jailTurns=2;
-    addLog(s,`${player.name} bị VÀO TÙ — giữ 2 lượt.`); advanceTurn(s);
-  } else if(tile.type==="property"){
-    const tileState=s.tiles[idx];
-    if(tileState.owner===null){
-      // modal mở sau animation
-    } else if(tileState.owner===player.id){
-      addLog(s,`${player.name} đứng trên đất của chính mình.`); advanceTurn(s);
-    } else {
-      const owner=s.players[tileState.owner];
-      const rent=tile.rent*(tileState.rentMultiplier||1);
-      player.money-=rent;
-      let ownerReceives=rent;
-      s.players.forEach(sp=>{
-        if(sp.status==="shareholder"&&sp.shareholderOf===owner.id&&sp.shareholderEquity>0){
-          const cut=Math.round(rent*sp.shareholderEquity);
-          sp.money+=cut; ownerReceives-=cut;
-          addLog(s,`💹 ${sp.name} nhận cổ tức ${cut.toLocaleString()}$`);
-        }
-      });
-      owner.money+=ownerReceives;
-      addLog(s,`${player.name} trả ${rent.toLocaleString()}$ cho ${owner.name} (${tile.name}).`);
-      advanceTurn(s);
-    }
-  }
-}
-
+/* ─── Helpers lượt đi (dùng cho mutateState trong buy/jail modal) ─── */
 function advanceTurn(s){ s.currentTurnPos=nextTurnIndexFor(s); }
 function nextTurnIndexFor(s){
+  const n = s.turnOrder.length;
   let pos=s.currentTurnPos, tries=0;
-  do{ pos=(pos+1)%s.turnOrder.length; tries++; }
-  while(s.players[s.turnOrder[pos]].status!=="active"&&tries<=NUM_PLAYERS);
+  do{ pos=(pos+1)%n; tries++; }
+  while(s.players[s.turnOrder[pos]].status!=="active" && tries<=n);
   return pos;
 }
 
-/* ─── Cổ đông ─── */
-function calcShareholderEquity(s, shareholderId, ownerId){
-  const sp=s.players[shareholderId], op=s.players[ownerId];
-  const transferVal=sp.properties.reduce((sum,idx)=>sum+RAW_TILES[idx][3],0);
-  const ownerCurVal=op.properties.reduce((sum,idx)=>sum+RAW_TILES[idx][3],0);
-  const totalAfter=ownerCurVal+transferVal;
-  if(totalAfter===0) return 1;
-  return transferVal/totalAfter;
-}
-function makeShareholderOf(s, shareholderId, ownerId){
-  const sp=s.players[shareholderId], op=s.players[ownerId];
-  const equity=calcShareholderEquity(s,shareholderId,ownerId);
-  sp.properties.forEach(idx=>{ s.tiles[idx].owner=ownerId; op.properties.push(idx); });
-  sp.properties=[];
-  sp.status="shareholder"; sp.shareholderOf=ownerId; sp.shareholderEquity=equity;
-  addLog(s,`🤝 ${sp.name} trở thành cổ đông của ${op.name} — cổ phần ${Math.round(equity*100)}%`);
+/* ─── Khôi phục buy modal nếu reload khi đang chờ mua đất ─── */
+function checkPendingBuy(){
+  if(myPlayerId === null) return;
+  if(state.pendingBuyTile === null || state.pendingBuyTile === undefined) return;
+  if(currentPlayerId(state) !== myPlayerId) return;
+  if(buyModal.classList.contains("show")) return;
+  if(sequenceLocked) return;
+  window.__pendingBuy = { idx: state.pendingBuyTile };
+  openBuyModal(state.pendingBuyTile);
 }
 
 /* ─── Buy modal ─── */
@@ -821,81 +784,119 @@ document.getElementById("btnBuyNo").addEventListener("click", async ()=>{
 const jailModal=document.getElementById("jailModal");
 function openJailModal(){
   const player=state.players[myPlayerId];
-  document.getElementById("jailDesc").textContent=`${player.name} còn ${player.jailTurns} lượt trong tù.`;
+  const turns=player.jailTurns;
+  document.getElementById("jailDesc").textContent=
+    `${player.name} còn ${turns} lượt trong tù. Tung xúc xắc — nếu ra đôi sẽ thoát và di chuyển ngay.`;
   jailModal.classList.add("show");
 }
+
 document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
-  const [d1j,d2j] = roll2Dice();
-  document.getElementById("diceResult").textContent = `🎲${d1j} 🎲${d2j}`;
+  const [d1j,d2j]=roll2Dice();
+  const isDoubles=d1j===d2j;
+  document.getElementById("diceResult").textContent=
+    `🎲${d1j} 🎲${d2j}${isDoubles?" 🎉 ĐÔI!":""}`;
+  sequenceLocked=true;
+  jailModal.classList.remove("show");
 
-  let needsAnimation = false;
-  let oldPos, newPos;
-
-  sequenceLocked = true;
   showDiceOnBoard(d1j, d2j, async ()=>{
-    await mutateState(s=>{
-      const p = s.players[myPlayerId];
-      s.lastDice = [d1j, d2j]; 
-      s.diceRollId = Date.now() + Math.random(); 
-      s.lastMovedPlayerId = myPlayerId;
-      
-      if(d1j === d2j){ 
-        p.jailTurns = 0; 
-        addLog(s, `${p.name} đổ đôi (${d1j},${d2j}) — RA TÙ và đi luôn ${d1j+d2j} bước!`); 
 
-        // 1. Tính toán vị trí mới
-        oldPos = p.position;
-        newPos = (oldPos + d1j + d2j) % TOTAL_TILES;
-        needsAnimation = true;
+    if(isDoubles){
+      /* ── Ra đôi: thoát tù + di chuyển + xử lý ô như bình thường ── */
+      const oldPos=state.players[myPlayerId].position;
+      const sum=d1j+d2j;
+      const newPos=(oldPos+sum)%TOTAL_TILES;
 
-        // 2. Thưởng tiền nếu đi qua ô Xuất Phát (Index 20)
-        // (Từ nhà tù ở ô 10, nếu đổ ra 11, 12 thì sẽ đi ngang qua ô 20)
-        if (oldPos < START_TILE_INDEX && newPos >= START_TILE_INDEX) {
-            p.money += PASS_START_BONUS;
-            addLog(s, `🎁 ${p.name} đi qua Xuất Phát, nhận ${PASS_START_BONUS}$`);
+      await mutateState(s=>{
+        const p=s.players[myPlayerId];
+        p.jailTurns=0;
+        s.lastDice=[d1j,d2j];
+        s.diceRollId=Date.now()+Math.random();
+        s.lastMovedPlayerId=myPlayerId;
+        s.pendingBuyTile=null; // reset cờ cũ
+
+        // Qua Xuất Phát?
+        if(oldPos+sum>=TOTAL_TILES){
+          p.money+=PASS_START_BONUS;
+          addLog(s,`${p.name} đi qua Xuất Phát, +${PASS_START_BONUS}$`);
         }
+        p.position=newPos;
+        addLog(s,`🎉 ${p.name} tung ĐÔI (${d1j},${d2j}) — ra tù và di chuyển ${sum} ô!`);
 
-        p.position = newPos;
-
-        // 3. Xử lý ô đất vừa đáp xuống
-        const landedTile = tileInfo(newPos);
-        if (landedTile.type === "property" && s.tiles[newPos].owner === null) {
-            // Đất trống -> Mở modal mua đất, KHÔNG qua lượt vội
-            s.pendingBuyTile = newPos; 
+        // Xử lý ô đất (nhân bản logic Edge Function để jail roll hoạt động offline-safe)
+        const tile=s.tiles[newPos];
+        if(tile.type==="tax"){
+          p.money-=TAX_AMOUNT;
+          addLog(s,`${p.name} nộp thuế ${TAX_AMOUNT}$`);
+          advanceTurn(s);
+        } else if(tile.type==="state"){
+          p.money-=STATE_FEE;
+          addLog(s,`${p.name} dừng tại ${tileInfo(newPos).name} — nộp phí ${STATE_FEE}$`);
+          advanceTurn(s);
+        } else if(tile.type==="jail"){
+          p.jailTurns=2;
+          addLog(s,`${p.name} vào tù 2 lượt`);
+          advanceTurn(s);
+        } else if(tile.type==="property"){
+          if(tile.owner===null){
+            s.pendingBuyTile=newPos; // chờ người chơi quyết định — KHÔNG gọi advanceTurn
+          } else if(tile.owner===myPlayerId){
+            addLog(s,`${p.name} đứng trên đất của mình`);
+            advanceTurn(s);
+          } else {
+            const rent=(tile.rent||0)*(tile.rentMultiplier||1);
+            p.money-=rent;
+            let ownerReceives=rent;
+            s.players.forEach(sp=>{
+              if(sp.status==="shareholder"&&sp.shareholderOf===tile.owner&&sp.shareholderEquity>0){
+                const cut=Math.round(rent*sp.shareholderEquity);
+                sp.money+=cut; ownerReceives-=cut;
+                addLog(s,`💹 ${sp.name} nhận cổ tức ${cut}$`);
+              }
+            });
+            s.players[tile.owner].money+=ownerReceives;
+            addLog(s,`${p.name} trả ${rent}$ tiền thuê cho ${s.players[tile.owner].name}`);
+            advanceTurn(s);
+          }
         } else {
-            // Đã có chủ / Thuế / Sự kiện -> Trừ tiền và tự động qua lượt
-            resolveTile(s, p, newPos); 
+          advanceTurn(s); // start hoặc ô khác
         }
-      } 
-      else { 
-        p.jailTurns--; 
-        if(p.jailTurns > 0) {
-            addLog(s, `${p.name} không đổ đôi, phải tiếp tục đợi ở tù thêm ${p.jailTurns} lượt.`); 
+      });
+
+      animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
+        sequenceLocked=false;
+        renderAll();
+        checkPendingBuy(); // mở buy modal nếu pendingBuyTile được set ở trên
+      });
+
+    } else {
+      /* ── Không ra đôi: giảm jailTurns, qua lượt ── */
+      await mutateState(s=>{
+        const p=s.players[myPlayerId];
+        s.lastDice=[d1j,d2j];
+        s.diceRollId=Date.now()+Math.random();
+        s.lastMovedPlayerId=myPlayerId;
+        p.jailTurns=Math.max(0, p.jailTurns-1);
+        if(p.jailTurns===0){
+          addLog(s,`${p.name} không ra đôi — hết hạn tù, sẽ đi tự do lượt sau.`);
         } else {
-            addLog(s, `⏳ ${p.name} không đổ đôi, nhưng đã HẾT 2 LƯỢT giam giữ nên sẽ được tự do vào vòng sau!`); 
+          addLog(s,`${p.name} không ra đôi (${d1j},${d2j}) — còn ${p.jailTurns} lượt trong tù.`);
         }
         advanceTurn(s);
-      }
-    });
-    
-    // 4. Nếu đổ đôi (được thả), kích hoạt hiệu ứng di chuyển token
-    if (needsAnimation) {
-        animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
-            sequenceLocked = false;
-            renderAll();
-            // Đợi token chạy xong mới pop-up bảng hỏi mua đất (nếu có)
-            if (state.pendingBuyTile !== undefined && state.pendingBuyTile !== null) {
-                window.__pendingBuy = { idx: state.pendingBuyTile };
-                openBuyModal(state.pendingBuyTile);
-            }
-        });
-    } else {
-        sequenceLocked = false; 
-        renderAll();
+      });
+      sequenceLocked=false;
+      renderAll();
     }
   });
-  
+});
+
+document.getElementById("btnJailPay").addEventListener("click", async ()=>{
   jailModal.classList.remove("show");
+  await mutateState(s=>{
+    const p=s.players[myPlayerId]; p.money-=200; p.jailTurns=0;
+    addLog(s,`${p.name} trả 200$ để ra tù sớm.`);
+    advanceTurn(s);
+  });
+  renderAll();
 });
 
 function roll2Dice(){ return [1+Math.floor(Math.random()*6), 1+Math.floor(Math.random()*6)]; }
