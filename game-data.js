@@ -155,57 +155,43 @@ function tileInfo(idx){
 
 
 // ---------------- TRẠNG THÁI BAN ĐẦU ----------------
-
 function createInitialState(){
-
   const players = [];
-
   for(let i=0;i<NUM_PLAYERS;i++){
-
     players.push({
-
       id:i, name:"(Trống)", color:PLAYER_COLORS[i],
-
       joined:false, claimToken:null,
-
       money:START_MONEY, position:START_TILE_INDEX, properties:[],
-
       status:"active", shareholderOf:null, jailTurns:0
-
     });
-
   }
 
-  const tiles = RAW_TILES.map(()=>({owner:null, rentMultiplier:1}));
+  // ĐÃ SỬA: Ánh xạ đầy đủ thuộc tính tĩnh từ RAW_TILES vào State động để lưu lên Database
+  const tiles = RAW_TILES.map((_, idx) => {
+    const info = tileInfo(idx);
+    return {
+      owner: null,
+      rentMultiplier: 1,
+      type: info.type,       // Lưu loại ô cờ: "property", "tax", "jail", "state", "start"
+      name: info.name,       // Lưu tên ô để hiển thị ở Backend Nhật ký (Log)
+      rent: info.rent || 0   // Lưu số tiền thuê gốc để Backend tự nhân hệ số phạt
+    };
+  });
 
   return {
-
     initialized:true,
-
     phase:0,
-
     elapsedSec:0,
-
     gameStarted:false,
-
     turnOrder:[],
-
     turnOrderLocked:false,
-
     priorityUsed:false,
-
     currentTurnPos:0,
-
     players, tiles,
-
     lastDice:null,
-
     log:["Đang chờ người chơi vào phòng và nhập tên đội..."],
-
     gameEnded:false
-
   };
-
 }
 
 
