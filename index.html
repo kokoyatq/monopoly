@@ -31,7 +31,6 @@
     max-width:88vmin; max-height:88vmin; display:block;
   }
 
-  /* ── DICE OVERLAY — centered ON THE BOARD ── */
   #diceOverlay{
     position:absolute; top:50%; left:50%;
     transform:translate(-50%,-50%);
@@ -64,7 +63,6 @@
   }
   #diceSumBadge.show{display:block;}
 
-  /* ── WEAK WARNING BANNER — top of board ── */
   #weakBanner{
     position:absolute; top:10px; left:50%; transform:translateX(-50%);
     background:linear-gradient(135deg,#ff5c5c,#c0392b);
@@ -132,7 +130,6 @@
   table{width:100%;} th,td{border:1px solid #e2e0f0; padding:7px 9px; text-align:left; font-size:12.5px;} th{background:#f1ebff; color:#7b3ff2;}
   input{padding:10px; border-radius:10px; border:2px solid #e2e0f0; width:100%; font-family:'Nunito',sans-serif; font-size:14px;}
 
-  /* land type legend */
   .legend{display:flex; gap:8px; font-size:10.5px; font-weight:700; flex-wrap:wrap;}
   .legend span{display:flex; align-items:center; gap:4px; background:#f6f5fb; padding:3px 8px; border-radius:999px;}
   .legend .sw{width:10px; height:10px; border-radius:50%;}
@@ -146,17 +143,12 @@
     <span>Giai đoạn: <b id="phaseName">-</b></span>
     <span id="suggestText" style="color:#e0680b; display:none;">⏰ Chỉ MC mới chuyển giai đoạn được</span>
   </div>
-
   <div id="canvasWrap">
     <canvas id="boardCanvas" width="760" height="760"></canvas>
-    <div id="diceOverlay">
-      <div class="dice-stage" id="diceStage"></div>
-    </div>
+    <div id="diceOverlay"><div class="dice-stage" id="diceStage"></div></div>
     <div id="diceSumBadge"></div>
-    <!-- Cảnh báo doanh nghiệp yếu — hiện trên bàn cờ -->
     <div id="weakBanner"></div>
   </div>
-
   <div class="legend">
     <span><i class="sw" style="background:var(--nn)"></i>🌾 Nông nghiệp</span>
     <span><i class="sw" style="background:var(--tn)"></i>🏬 Thương nghiệp</span>
@@ -173,7 +165,6 @@
   <div id="log"></div>
 </div>
 
-<!-- Modals -->
 <div class="modal-overlay show" id="lobbyScreen" style="z-index:100;">
   <div class="modal-box" style="width:480px;">
     <h3>🚪 Vào phòng — chọn đội của bạn</h3>
@@ -229,8 +220,6 @@ let selectedSlotForClaim = null;
 let resultShown = false;
 let lastSeenDiceRollId = null;
 let sequenceLocked = false;
-
-// Theo dõi trạng thái "yếu" của từng player để chỉ cảnh báo 1 lần
 const warnedWeak = new Set();
 
 let state = null;
@@ -271,16 +260,13 @@ async function init(){
     if(isNewRoll){
       lastSeenDiceRollId = state.diceRollId;
       const isMine = myPlayerId !== null && state.lastMovedPlayerId === myPlayerId;
-      if(!isMine){
-        runRemoteSequence(prev);
-        return;
-      }
+      if(!isMine){ runRemoteSequence(prev); return; }
     }
     if(!sequenceLocked) renderAll();
   });
 }
 
-/* Remote sequence — dùng cho display mode và người xem */
+/* ─── Remote sequence (display mode + người xem) ─── */
 function runRemoteSequence(prevState){
   if(!state.lastDice){ renderAll(); return; }
   const [d1,d2] = state.lastDice;
@@ -341,7 +327,7 @@ function showDiceOnBoard(d1, d2, cb){
   }, 4000);
 }
 
-/* ─── Token animation + motion blur ─── */
+/* ─── Token animation (smooth ease-out) ─── */
 function animateTokenMove(playerId, from, to, onDone){
   if(from === to){ onDone && onDone(); return; }
   const steps = [];
@@ -351,102 +337,61 @@ function animateTokenMove(playerId, from, to, onDone){
     steps.push(cur);
     safety++;
   }
-
-  // Tốc độ di chuyển: 150ms cho mỗi ô (càng nhỏ càng nhanh)
-  const MS_PER_CELL = 150; 
+  const MS_PER_CELL = 150;
   const totalDuration = steps.length * MS_PER_CELL;
   let startTime = null;
-
-  // Bật cờ (flag) báo hiệu quân cờ đang di chuyển
   state.players[playerId].isAnimating = true;
-
   function step(timestamp){
     if(!startTime) startTime = timestamp;
     const elapsed = timestamp - startTime;
     let progress = elapsed / totalDuration;
-
     if(progress >= 1){
-      // Khi đến đích: Cập nhật vị trí, tắt cờ animation và kết thúc
       displayedPos[playerId] = to;
       state.players[playerId].isAnimating = false;
       renderBoard();
       if(onDone) onDone();
       return;
     }
-
-    // --- HIỆU ỨNG EASE-OUT ---
-    // Giúp quân cờ đi nhanh lúc đầu và trượt chậm dần khi tới đích (rất chuyên nghiệp)
-    const easeProgress = 1 - Math.pow(1 - progress, 3); 
-
+    const easeProgress = 1 - Math.pow(1 - progress, 3);
     const currentStepFloat = easeProgress * steps.length;
     const currentStepIndex = Math.floor(currentStepFloat);
     const stepProgress = currentStepFloat - currentStepIndex;
-
     const prevIdx = currentStepIndex === 0 ? from : steps[currentStepIndex - 1];
-    const nextIdx = steps[currentStepIndex];
-
+    const nextIdx = steps[Math.min(currentStepIndex, steps.length-1)];
     const p0 = positions[prevIdx];
     const p1 = positions[nextIdx];
-
-    // Tính toán tọa độ Pixel chính xác giữa 2 ô
     const currentX = p0.x + (p1.x - p0.x) * stepProgress;
     const currentY = p0.y + (p1.y - p0.y) * stepProgress;
-
-    // 1. Render lại bàn cờ tĩnh
-    renderBoard(); 
-
-    // 2. Vẽ quân cờ đang di chuyển lướt lên trên bàn cờ
+    renderBoard();
     const player = state.players[playerId];
-    const cx = currentX + CELL / 2; // Căn giữa tâm ô đất
+    const cx = currentX + CELL / 2;
     const cy = currentY + CELL / 2;
-
     ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,.4)"; 
-    ctx.shadowBlur = 4; 
-    ctx.shadowOffsetY = 2;
-    ctx.beginPath(); 
-    ctx.fillStyle = player.color;
-    ctx.arc(cx, cy, CELL * 0.11, 0, Math.PI * 2); // Kích thước dấu chấm
-    ctx.fill();
-    ctx.shadowBlur = 0; 
-    ctx.strokeStyle = "#fff"; 
-    ctx.lineWidth = 2; 
-    ctx.stroke();
+    ctx.shadowColor="rgba(0,0,0,.4)"; ctx.shadowBlur=4; ctx.shadowOffsetY=2;
+    ctx.beginPath(); ctx.fillStyle=player.color;
+    ctx.arc(cx, cy, CELL*0.11, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur=0; ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
     ctx.restore();
-
-    // Tiếp tục khung hình tiếp theo
     requestAnimationFrame(step);
   }
-  
   requestAnimationFrame(step);
 }
-
 
 /* ─── Cảnh báo doanh nghiệp yếu ─── */
 function checkWeakWarnings(){
   if(!state) return;
   const banner = document.getElementById("weakBanner");
-  const weakNow = state.players.filter(p=>
-    p.status==="active" && isWeak(state,p)
-  );
-  // Cảnh báo những player mới bị yếu lần đầu
+  const weakNow = state.players.filter(p=> p.status==="active" && isWeak(state,p));
   weakNow.forEach(p=>{
-    if(!warnedWeak.has(p.id)){
-      warnedWeak.add(p.id);
-      flashWeakAlert(p);
-    }
+    if(!warnedWeak.has(p.id)){ warnedWeak.add(p.id); flashWeakAlert(p); }
   });
-  // Banner liên tục nếu có bất kỳ player yếu nào
   if(weakNow.length > 0){
-    const names = weakNow.map(p=>`${p.name}`).join(", ");
-    banner.textContent = `⚠️ Doanh nghiệp đang YẾU: ${names} — cần hỗ trợ!`;
+    banner.textContent = `⚠️ Doanh nghiệp đang YẾU: ${weakNow.map(p=>p.name).join(", ")} — cần hỗ trợ!`;
     banner.classList.add("show");
   } else {
     banner.classList.remove("show");
   }
 }
-
-// Flash cảnh báo 1 lần khi mới trở nên yếu
 function flashWeakAlert(player){
   const el = document.createElement("div");
   el.style.cssText = `
@@ -460,15 +405,11 @@ function flashWeakAlert(player){
   `;
   el.innerHTML = `⚠️ CẢNH BÁO<br/><span style="font-size:16px;">${player.name} đang ở trạng thái YẾU!</span>`;
   document.body.appendChild(el);
-  requestAnimationFrame(()=>{
-    requestAnimationFrame(()=>{
-      el.style.transform="translate(-50%,-50%) scale(1)";
-      el.style.opacity="1";
-    });
-  });
+  requestAnimationFrame(()=>{ requestAnimationFrame(()=>{
+    el.style.transform="translate(-50%,-50%) scale(1)"; el.style.opacity="1";
+  });});
   setTimeout(()=>{
-    el.style.transform="translate(-50%,-50%) scale(0.8)";
-    el.style.opacity="0";
+    el.style.transform="translate(-50%,-50%) scale(0.8)"; el.style.opacity="0";
     setTimeout(()=> el.remove(), 350);
   }, 2800);
 }
@@ -550,7 +491,7 @@ function renderAll(){
   renderLog();
   updateRollButton();
   renderResultModal();
-  checkWeakWarnings();   // ← kiểm tra doanh nghiệp yếu mỗi lần re-render
+  checkWeakWarnings();
 }
 
 /* ─── Board drawing ─── */
@@ -568,14 +509,11 @@ function drawTile(tile, idx, pos){
   const pad=2.5, x=pos.x+pad, y=pos.y+pad, w=CELL-pad*2, h=CELL-pad*2;
   ctx.save();
   const owner = tile.type==="property" ? state.tiles[idx].owner : null;
-  
-  // Vẽ viền sáng (glow) nếu đất đã có chủ
   if(owner!==null){
     roundRect(x-2,y-2,w+4,h+4,10);
     ctx.shadowColor=state.players[owner].color; ctx.shadowBlur=14;
     ctx.fillStyle=state.players[owner].color; ctx.fill(); ctx.shadowBlur=0;
   }
-  
   roundRect(x,y,w,h,9);
   let grad;
   if(tile.type==="property"){ const [c1,c2]=LAND_BG[tile.landType]; grad=grd(x,y,h,c1,c2); }
@@ -585,12 +523,8 @@ function drawTile(tile, idx, pos){
   else if(tile.type==="state"){ grad=grd(x,y,h,"#7fd7e0","#1e93a3"); }
   else { grad=grd(x,y,h,"#ccc","#999"); }
   ctx.fillStyle=grad; ctx.fill();
-  
-  // Hiệu ứng làm tối nền đất nếu đã có chủ
   if(owner!==null){ ctx.fillStyle="rgba(0,0,0,.18)"; ctx.fill(); }
   ctx.strokeStyle="rgba(255,255,255,.5)"; ctx.lineWidth=1.4; ctx.stroke();
-  
-  // Vẽ Icon
   ctx.font=`${Math.max(13,CELL*0.3)}px serif`;
   ctx.textAlign="center"; ctx.textBaseline="middle";
   let icon="•";
@@ -600,17 +534,12 @@ function drawTile(tile, idx, pos){
   if(tile.type==="start") icon="🚩";
   if(tile.type==="state") icon="⚡";
   ctx.fillText(icon, x+w/2, y+h*0.38);
-  
-  // Vẽ Tên ô đất
   const labelY=y+h*0.78;
   ctx.font=`700 ${Math.max(8,CELL*0.135)}px 'Nunito', sans-serif`;
   const tw=ctx.measureText(tile.name).width;
   roundRect(x+w/2-tw/2-4, labelY-h*0.13, tw+8, h*0.22, 5);
   ctx.fillStyle="rgba(255,255,255,.88)"; ctx.fill();
   ctx.fillStyle="#2d2150"; ctx.fillText(tile.name, x+w/2, labelY);
-  
-  // ĐÃ XÓA: Đoạn code vẽ dấu chấm của owner ở góc dưới cùng bên phải
-  
   ctx.restore();
 }
 function drawTokens(){
@@ -621,30 +550,21 @@ function drawTokens(){
     const pos=displayedPos[p.id]!==undefined?displayedPos[p.id]:p.position;
     byTile[pos]=byTile[pos]||[]; byTile[pos].push(p);
   });
-  
   Object.keys(byTile).forEach(posIdx=>{
-    const pos = positions[posIdx];
-    const tokensOnTile = byTile[posIdx];
-    const total = tokensOnTile.length;
-    
-    tokensOnTile.forEach((p, i)=>{
-      // Tọa độ mặc định là chính giữa tâm ô đất
-      let cx = pos.x + CELL / 2;
-      let cy = pos.y + CELL / 2;
-      
-      // Nếu có từ 2 người trở lên ở cùng ô, tự động xếp tỏa ra xung quanh tâm ô để tránh đè chồng lên nhau
-      if (total > 1) {
-        const angle = (i * 2 * Math.PI) / total - Math.PI / 2; // Bắt đầu từ góc 12 giờ
-        const radius = CELL * 0.16; // Khoảng cách giãn ra từ tâm ô
-        cx += Math.cos(angle) * radius;
-        cy += Math.sin(angle) * radius;
+    const pos=positions[posIdx];
+    const tokensOnTile=byTile[posIdx];
+    const total=tokensOnTile.length;
+    tokensOnTile.forEach((p,i)=>{
+      let cx=pos.x+CELL/2, cy=pos.y+CELL/2;
+      if(total>1){
+        const angle=(i*2*Math.PI)/total - Math.PI/2;
+        const radius=CELL*0.16;
+        cx+=Math.cos(angle)*radius; cy+=Math.sin(angle)*radius;
       }
-      
       ctx.save();
-      // Vẽ bóng đổ và viền trắng cho dấu chấm (Token) thêm sắc nét
       ctx.shadowColor="rgba(0,0,0,.4)"; ctx.shadowBlur=4; ctx.shadowOffsetY=2;
       ctx.beginPath(); ctx.fillStyle=p.color;
-      ctx.arc(cx, cy, CELL * 0.11, 0, Math.PI * 2); ctx.fill();
+      ctx.arc(cx,cy,CELL*0.11,0,Math.PI*2); ctx.fill();
       ctx.shadowBlur=0; ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
       ctx.restore();
     });
@@ -656,7 +576,7 @@ function renderBoard(){
   drawTokens();
 }
 
-/* ─── Sidebar players ─── */
+/* ─── Sidebar ─── */
 function renderPlayers(){
   const wrap=document.getElementById("players"); wrap.innerHTML="";
   const curId=currentPlayerId(state);
@@ -719,50 +639,49 @@ function renderResultModal(){
   document.getElementById("resultTable").innerHTML=html;
 }
 
-/* ─── Roll ─── */
-function roll2Dice(){ return [1+Math.floor(Math.random()*6), 1+Math.floor(Math.random()*6)]; }
-
+/* ─── Roll button ─── */
 document.getElementById("btnRoll").addEventListener("click", async ()=>{
   if(sequenceLocked) return;
   const curId=currentPlayerId(state);
   if(myPlayerId!==curId) return;
   const player=state.players[curId];
   if(player.jailTurns>0){ openJailModal(); return; }
-  const [d1,d2]=roll2Dice();
-  const sum=d1+d2;
-  document.getElementById("diceResult").textContent=`🎲${d1} 🎲${d2} = ${sum}`;
+
   sequenceLocked=true; updateRollButton();
-  // Gọi server — server tính toán, trả về state mới
-let result;
-try {
-  result = await rollDice(currentRoomId, myPlayerId);
-} catch(err) {
-  sequenceLocked = false;
-  updateRollButton();
-  alert("Lỗi: " + err.message);
-  return;
-}
 
-const [d1, d2] = result.dice;
-const newPos = result.state.players[myPlayerId].position;
-const oldPos = player.position;
+  // Gọi Edge Function — server tính toán và trả về kết quả
+  let result;
+  try{
+    result = await rollDice(GAME_ID, myPlayerId);
+  } catch(err){
+    sequenceLocked=false; updateRollButton();
+    alert("Lỗi server: " + err.message);
+    return;
+  }
 
-document.getElementById("diceResult").textContent = `🎲${d1} 🎲${d2} = ${d1+d2}`;
+  const [d1,d2] = result.dice;
+  const oldPos = player.position;
+  const newPos = result.state.players[myPlayerId].position;
 
-// Hiện xúc xắc 4 giây rồi animate token
-showDiceOnBoard(d1, d2, ()=>{
-  animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
-    sequenceLocked = false;
-    renderAll();
-    // Mở modal mua đất nếu server báo có pendingBuyTile
-    if(result.state.pendingBuyTile !== undefined && result.state.pendingBuyTile !== null){
-      window.__pendingBuy = { idx: result.state.pendingBuyTile };
-      openBuyModal(result.state.pendingBuyTile);
-    }
+  document.getElementById("diceResult").textContent = `🎲${d1} 🎲${d2} = ${d1+d2}`;
+
+  // Cập nhật state local ngay để renderAll dùng được
+  state = result.state;
+
+  // Hiện xúc xắc 4s → animate token → mở modal nếu cần
+  showDiceOnBoard(d1, d2, ()=>{
+    animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
+      sequenceLocked=false;
+      renderAll();
+      if(result.state.pendingBuyTile !== undefined && result.state.pendingBuyTile !== null){
+        window.__pendingBuy = { idx: result.state.pendingBuyTile };
+        openBuyModal(result.state.pendingBuyTile);
+      }
+    });
   });
-});
+}); // ← đóng event listener đúng chỗ
 
-/* ─── Tile resolution ─── */
+/* ─── Tile resolution (dùng cho mutateState cũ, vẫn giữ lại) ─── */
 function resolveTile(s, player, idx){
   const tile=tileInfo(idx);
   if(tile.type==="start"){
@@ -779,37 +698,25 @@ function resolveTile(s, player, idx){
   } else if(tile.type==="property"){
     const tileState=s.tiles[idx];
     if(tileState.owner===null){
-      // modal mở sau animation — advanceTurn gọi trong handler mua/bỏ
+      // modal mở sau animation
     } else if(tileState.owner===player.id){
       addLog(s,`${player.name} đứng trên đất của chính mình.`); advanceTurn(s);
     } else {
       const owner=s.players[tileState.owner];
       const rent=tile.rent*(tileState.rentMultiplier||1);
       player.money-=rent;
-
-// Trả cổ tức cho các cổ đông của owner trước
-      let ownerReceives = rent;
+      let ownerReceives=rent;
       s.players.forEach(sp=>{
-        if(sp.status === "shareholder" && sp.shareholderOf === owner.id && sp.shareholderEquity > 0){
-          const cut = Math.round(rent * sp.shareholderEquity);
-          sp.money    += cut;
-          ownerReceives -= cut;
-          addLog(s, `💹 ${sp.name} nhận cổ tức ${cut.toLocaleString()}$ (${Math.round(sp.shareholderEquity*100)}%) từ ${owner.name} — ${tile.name}`);
+        if(sp.status==="shareholder"&&sp.shareholderOf===owner.id&&sp.shareholderEquity>0){
+          const cut=Math.round(rent*sp.shareholderEquity);
+          sp.money+=cut; ownerReceives-=cut;
+          addLog(s,`💹 ${sp.name} nhận cổ tức ${cut.toLocaleString()}$`);
         }
       });
-      owner.money += ownerReceives;
-      addLog(s,`${player.name} trả ${rent.toLocaleString()}$ mặt bằng cho ${owner.name} (${tile.name}).`);
+      owner.money+=ownerReceives;
+      addLog(s,`${player.name} trả ${rent.toLocaleString()}$ cho ${owner.name} (${tile.name}).`);
       advanceTurn(s);
     }
-  }
-}
-
-function openTileModal(idx){
-  if(myPlayerId!==currentPlayerId(state)&&myPlayerId!==state.lastMovedPlayerId) return;
-  const tile=tileInfo(idx);
-  if(tile.type==="property"){
-    const tileState=state.tiles[idx];
-    if(tileState.owner===null){ window.__pendingBuy={idx}; openBuyModal(idx); }
   }
 }
 
@@ -821,33 +728,22 @@ function nextTurnIndexFor(s){
   return pos;
 }
 
-// Tính % cổ phần dựa trên giá trị đất chuyển giao
+/* ─── Cổ đông ─── */
 function calcShareholderEquity(s, shareholderId, ownerId){
-  const shareholder = s.players[shareholderId];
-  const owner       = s.players[ownerId];
-  const transferVal = shareholder.properties.reduce((sum,idx)=> sum + RAW_TILES[idx][3], 0);
-  const ownerCurVal = owner.properties.reduce((sum,idx)=> sum + RAW_TILES[idx][3], 0);
-  const totalAfter  = ownerCurVal + transferVal;
-  if(totalAfter === 0) return 1; // toàn bộ đất là của shareholder → 100%
-  return transferVal / totalAfter;
+  const sp=s.players[shareholderId], op=s.players[ownerId];
+  const transferVal=sp.properties.reduce((sum,idx)=>sum+RAW_TILES[idx][3],0);
+  const ownerCurVal=op.properties.reduce((sum,idx)=>sum+RAW_TILES[idx][3],0);
+  const totalAfter=ownerCurVal+transferVal;
+  if(totalAfter===0) return 1;
+  return transferVal/totalAfter;
 }
-
-// Gọi hàm này khi admin/game chuyển 1 player thành cổ đông
 function makeShareholderOf(s, shareholderId, ownerId){
-  const sp = s.players[shareholderId];
-  const op = s.players[ownerId];
-  const equity = calcShareholderEquity(s, shareholderId, ownerId);
-  // Chuyển toàn bộ đất sang owner
-  sp.properties.forEach(idx=>{
-    s.tiles[idx].owner = ownerId;
-    op.properties.push(idx);
-  });
-  sp.properties = [];
-  // Gắn trạng thái cổ đông
-  sp.status         = "shareholder";
-  sp.shareholderOf  = ownerId;
-  sp.shareholderEquity = equity; // VD: 0.3 = 30%
-  addLog(s, `🤝 ${sp.name} trở thành cổ đông của ${op.name} — cổ phần ${Math.round(equity*100)}%`);
+  const sp=s.players[shareholderId], op=s.players[ownerId];
+  const equity=calcShareholderEquity(s,shareholderId,ownerId);
+  sp.properties.forEach(idx=>{ s.tiles[idx].owner=ownerId; op.properties.push(idx); });
+  sp.properties=[];
+  sp.status="shareholder"; sp.shareholderOf=ownerId; sp.shareholderEquity=equity;
+  addLog(s,`🤝 ${sp.name} trở thành cổ đông của ${op.name} — cổ phần ${Math.round(equity*100)}%`);
 }
 
 /* ─── Buy modal ─── */
@@ -855,15 +751,12 @@ const buyModal=document.getElementById("buyModal");
 function openBuyModal(idx){
   const tile=tileInfo(idx);
   const player=state.players[myPlayerId];
-  const cantAfford=player.money<tile.price; // Chỉ còn kiểm tra xem có đủ tiền hay không
-  
+  const cantAfford=player.money<tile.price;
   document.getElementById("buyTitle").textContent=`${tile.name} (${tile.landType}) — ô ${idx}`;
   let desc=`Giá: ${tile.price.toLocaleString()}$ — Phí mặt bằng: ${tile.rent.toLocaleString()}$.\nĐội bạn có ${player.money.toLocaleString()}$.`;
-  
   if(cantAfford) desc+=`\n⛔ Không đủ tiền.`;
-  
   document.getElementById("buyDesc").textContent=desc;
-  document.getElementById("btnBuyYes").disabled=cantAfford; // Nếu thiếu tiền thì khóa nút Mua
+  document.getElementById("btnBuyYes").disabled=cantAfford;
   buyModal.classList.add("show");
 }
 document.getElementById("btnBuyYes").addEventListener("click", async ()=>{
@@ -922,6 +815,8 @@ document.getElementById("btnJailWait").addEventListener("click", async ()=>{
   });
   jailModal.classList.remove("show");
 });
+
+function roll2Dice(){ return [1+Math.floor(Math.random()*6), 1+Math.floor(Math.random()*6)]; }
 
 init();
 </script>
