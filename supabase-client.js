@@ -18,10 +18,10 @@ async function saveState(state){
   if(error){ console.error("saveState error", error); alert("Lỗi lưu dữ liệu: " + error.message); }
 }
 
-// Đọc-sửa-ghi: dùng cho các thao tác KHÔNG ảnh hưởng lượt chơi (join phòng, đổi tên, admin...).
-// ĐÃ SỬA: trả về state mới để nơi gọi cập nhật lại biến state toàn cục, tránh render với data cũ.
-// Lưu ý: hàm này KHÔNG validate lượt/quyền — không dùng cho roll/jail/mua đất nữa, các action đó
-// đã chuyển hết qua gameAction() (Edge Function, có validate + chống ghi đè race condition).
+// Đọc-sửa-ghi: CHỈ dùng cho thao tác KHÔNG ảnh hưởng lượt chơi (join phòng, đổi tên, admin...).
+// Trả về state mới để nơi gọi cập nhật lại biến state toàn cục.
+// Mọi action liên quan lượt chơi (roll/jail/mua đất) đã chuyển qua gameAction() (Edge Function
+// có validate quyền + optimistic lock chống ghi đè).
 async function mutateState(mutatorFn){
   const state = await loadState();
   if(!state) return null;

@@ -78,6 +78,18 @@
     50%{box-shadow:0 4px 16px rgba(0,0,0,.35), 0 0 0 10px rgba(255,92,92,0);}
   }
 
+  #eventBanner{
+    position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%) scale(.85);
+    background:linear-gradient(135deg,#7b3ff2,#4c1d95);
+    color:#fff; font-family:'Baloo 2',sans-serif; font-weight:800; font-size:19px;
+    padding:14px 28px; border-radius:18px; z-index:40; pointer-events:none;
+    box-shadow:0 10px 30px rgba(0,0,0,.5); white-space:nowrap; text-align:center;
+    opacity:0; display:none; max-width:92%; text-overflow:ellipsis; overflow:hidden;
+    transition:opacity .25s, transform .25s;
+  }
+  #eventBanner.show{display:block; opacity:1; transform:translate(-50%,-50%) scale(1);}
+
   #phaseBar{
     display:flex; align-items:center; gap:14px; background:var(--panel); color:var(--panel-text);
     padding:10px 20px; border-radius:999px; font-size:14px; font-weight:700;
@@ -148,6 +160,7 @@
     <div id="diceOverlay"><div class="dice-stage" id="diceStage"></div></div>
     <div id="diceSumBadge"></div>
     <div id="weakBanner"></div>
+    <div id="eventBanner"></div>
   </div>
   <div class="legend">
     <span><i class="sw" style="background:var(--nn)"></i>🌾 Nông nghiệp</span>
@@ -220,6 +233,7 @@ let myPlayerId = null;
 let selectedSlotForClaim = null;
 let resultShown = false;
 let lastSeenDiceRollId = null;
+let lastSeenEventId = null;
 let sequenceLocked = false;
 const warnedWeak = new Set();
 
@@ -272,6 +286,7 @@ async function init(){
     }
   }
   state.players.forEach(p=> displayedPos[p.id] = p.position);
+  lastSeenEventId = state.lastEventId || null;
   tryAutoRejoin();
   renderAll();
   // Khôi phục buy modal nếu người chơi reload trong lúc đang chờ quyết định mua đất
@@ -280,6 +295,10 @@ async function init(){
     const prev = state;
     state = newState;
     const isNewRoll = state.diceRollId && state.diceRollId !== lastSeenDiceRollId;
+    if(state.lastEventId && state.lastEventId !== lastSeenEventId){
+      lastSeenEventId = state.lastEventId;
+      queueEventBanners(state.lastEvents);
+    }
     if(isNewRoll){
       lastSeenDiceRollId = state.diceRollId;
       const isMine = myPlayerId !== null && state.lastMovedPlayerId === myPlayerId;
@@ -398,6 +417,27 @@ function animateTokenMove(playerId, from, to, onDone){
     requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
+}
+
+/* ─── Thông báo sự kiện giữa bàn (mua đất / trả thuê / vào tù...) ─── */
+let eventBannerQueue = [];
+let eventBannerBusy = false;
+function queueEventBanners(events){
+  if(!events || events.length===0) return;
+  eventBannerQueue.push(...events);
+  if(!eventBannerBusy) playNextEventBanner();
+}
+function playNextEventBanner(){
+  const banner = document.getElementById("eventBanner");
+  if(eventBannerQueue.length===0){ eventBannerBusy=false; return; }
+  eventBannerBusy = true;
+  const text = eventBannerQueue.shift();
+  banner.textContent = text;
+  banner.classList.add("show");
+  setTimeout(()=>{
+    banner.classList.remove("show");
+    setTimeout(playNextEventBanner, 220);
+  }, 2200);
 }
 
 /* ─── Cảnh báo doanh nghiệp yếu ─── */
@@ -711,12 +751,14 @@ document.getElementById("btnRoll").addEventListener("click", async ()=>{
 
   // Cập nhật state local ngay để renderAll dùng được
   state = result.state;
+  if(state.lastEventId) lastSeenEventId = state.lastEventId;
 
   // Hiện xúc xắc 4s → animate token → mở modal nếu cần
   showDiceOnBoard(d1, d2, ()=>{
     animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
       sequenceLocked=false;
       renderAll();
+      queueEventBanners(result.events);
       if(result.state.pendingBuyTile !== undefined && result.state.pendingBuyTile !== null){
         window.__pendingBuy = { idx: result.state.pendingBuyTile };
         openBuyModal(result.state.pendingBuyTile);
@@ -765,6 +807,8 @@ document.getElementById("btnBuyYes").addEventListener("click", async ()=>{
   try{
     const result = await gameAction(GAME_ID, myPlayerId, "buy-yes");
     state = result.state;
+    if(state.lastEventId) lastSeenEventId = state.lastEventId;
+    queueEventBanners(result.events);
   } catch(err){
     alert("Lỗi server: " + err.message);
   }
@@ -778,6 +822,7 @@ document.getElementById("btnBuyNo").addEventListener("click", async ()=>{
   try{
     const result = await gameAction(GAME_ID, myPlayerId, "buy-no");
     state = result.state;
+    if(state.lastEventId) lastSeenEventId = state.lastEventId;
   } catch(err){
     alert("Lỗi server: " + err.message);
   }
@@ -797,6 +842,7 @@ document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
   if(sequenceLocked) return;
   jailModal.classList.remove("show");
   sequenceLocked=true; updateRollButton();
+  const oldPos = state.players[myPlayerId].position;
 
   let result;
   try{
@@ -810,10 +856,27 @@ document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
   const [d1j,d2j] = result.dice;
   document.getElementById("diceResult").textContent=`🎲${d1j} 🎲${d2j}`;
   state = result.state;
+  if(state.lastEventId) lastSeenEventId = state.lastEventId;
+  const newPos = state.players[myPlayerId].position;
+  const isDouble = d1j === d2j;
 
   showDiceOnBoard(d1j,d2j, ()=>{
-    sequenceLocked=false;
-    renderAll();
+    // Đổ đôi: ra tù VÀ đi tiếp theo số điểm, nên phải animate token di chuyển tới ô mới
+    if(isDouble && newPos !== oldPos){
+      animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
+        sequenceLocked=false;
+        renderAll();
+        queueEventBanners(result.events);
+        if(state.pendingBuyTile !== undefined && state.pendingBuyTile !== null){
+          window.__pendingBuy = { idx: state.pendingBuyTile };
+          openBuyModal(state.pendingBuyTile);
+        }
+      });
+    } else {
+      sequenceLocked=false;
+      renderAll();
+      queueEventBanners(result.events);
+    }
   });
 });
 document.getElementById("btnJailPay").addEventListener("click", async ()=>{
@@ -822,6 +885,8 @@ document.getElementById("btnJailPay").addEventListener("click", async ()=>{
   try{
     const result = await gameAction(GAME_ID, myPlayerId, "jail-pay");
     state = result.state;
+    if(state.lastEventId) lastSeenEventId = state.lastEventId;
+    queueEventBanners(result.events);
   } catch(err){
     alert("Lỗi server: " + err.message);
   }
@@ -835,6 +900,7 @@ document.getElementById("btnJailWait").addEventListener("click", async ()=>{
   try{
     const result = await gameAction(GAME_ID, myPlayerId, "jail-wait");
     state = result.state;
+    if(state.lastEventId) lastSeenEventId = state.lastEventId;
   } catch(err){
     alert("Lỗi server: " + err.message);
   }
