@@ -38,9 +38,9 @@
   }
   #boardCanvas{
     position:relative; z-index:1;
-    background:radial-gradient(ellipse at 35% 28%, #e6cda0, #c9a876 55%, #a9824f 100%);
+    background:linear-gradient(150deg, #f0ddb8 0%, #d9bd8c 50%, #c9a876 100%);
     border-radius:22px;
-    box-shadow:0 12px 0 rgba(0,0,0,.25), 0 18px 40px rgba(0,0,0,.45), inset 0 0 0 6px rgba(255,255,255,.22), inset 0 0 60px rgba(80,50,20,.18);
+    box-shadow:0 12px 0 rgba(0,0,0,.25), 0 18px 40px rgba(0,0,0,.45), inset 0 0 0 6px rgba(255,255,255,.22);
     max-width:88vmin; max-height:88vmin; display:block;
   }
 
@@ -830,6 +830,42 @@ function drawFloatTexts(ts){
   ctx.restore();
   ctx.globalAlpha = 1;
 }
+function drawCenterLogo(){
+  const cx = canvas.width/2, cy = canvas.height/2;
+  const r = CELL*2.1; // bán kính vùng trang trí giữa bàn
+
+  ctx.save();
+  // Hình thoi mảnh trang trí kiểu la bàn cổ điển, mờ nhẹ
+  ctx.translate(cx, cy);
+  ctx.globalAlpha = 0.10;
+  ctx.strokeStyle = "#5c4324";
+  ctx.lineWidth = 2;
+  for(let i=0;i<4;i++){
+    ctx.save();
+    ctx.rotate((Math.PI/2)*i + Math.PI/4);
+    ctx.beginPath();
+    ctx.moveTo(0,0); ctx.lineTo(r*1.55, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.beginPath();
+  ctx.arc(0,0,r*0.62,0,Math.PI*2);
+  ctx.stroke();
+  ctx.restore();
+
+  // Logo + tên game
+  ctx.save();
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.font = `${r*0.42}px serif`;
+  ctx.globalAlpha = 0.5;
+  ctx.fillText("🏛️", cx, cy - r*0.22);
+  ctx.globalAlpha = 0.65;
+  ctx.fillStyle = "#5c4324";
+  ctx.font = `800 ${Math.max(14, r*0.135)}px 'Baloo 2', sans-serif`;
+  ctx.fillText("TỪ CẠNH TRANH", cx, cy + r*0.26);
+  ctx.fillText("ĐẾN ĐỘC QUYỀN", cx, cy + r*0.45);
+  ctx.restore();
+}
 function renderBoard(ts){
   if(ts===undefined) ts = performance.now();
   // Dọn các hiệu ứng đã hết hạn
@@ -838,6 +874,7 @@ function renderBoard(ts){
 
   ctx.clearRect(0,0,canvas.width,canvas.height);
   RAW_TILES.forEach((raw,i)=>drawTile(tileInfo(i), i, positions[i], ts));
+  drawCenterLogo();
   drawAmbientParticles(ts);
   drawTokens(ts);
   drawFloatTexts(ts);
