@@ -32,9 +32,15 @@
 
   #boardWrap{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; position:relative;}
   #canvasWrap{position:relative; display:inline-block;}
+  #bgParticles{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:130%; height:130%; pointer-events:none; z-index:0;
+  }
   #boardCanvas{
-    background:#2f9e4f; border-radius:22px;
-    box-shadow:0 12px 0 rgba(0,0,0,.25), 0 18px 40px rgba(0,0,0,.45), inset 0 0 0 6px rgba(255,255,255,.25);
+    position:relative; z-index:1;
+    background:radial-gradient(ellipse at 35% 28%, #e6cda0, #c9a876 55%, #a9824f 100%);
+    border-radius:22px;
+    box-shadow:0 12px 0 rgba(0,0,0,.25), 0 18px 40px rgba(0,0,0,.45), inset 0 0 0 6px rgba(255,255,255,.22), inset 0 0 60px rgba(80,50,20,.18);
     max-width:88vmin; max-height:88vmin; display:block;
   }
 
@@ -165,6 +171,7 @@
     <span id="suggestText" style="color:#e0680b; display:none;">⏰ Chỉ MC mới chuyển giai đoạn được</span>
   </div>
   <div id="canvasWrap">
+    <canvas id="bgParticles" width="980" height="980"></canvas>
     <canvas id="boardCanvas" width="760" height="760"></canvas>
     <div id="diceOverlay"><div class="dice-stage" id="diceStage"></div></div>
     <div id="diceSumBadge"></div>
@@ -844,6 +851,68 @@ function ambientLoop(ts){
   requestAnimationFrame(ambientLoop);
 }
 requestAnimationFrame(ambientLoop);
+
+/* ─── Particle nền phía sau bàn cờ — canvas RIÊNG BIỆT hoàn toàn, không đụng tới
+   canvas bàn cờ chính (boardCanvas) nên không thể ảnh hưởng tới vẽ ô/token/logic game. ─── */
+(function initBgParticles(){
+  const bgCanvas = document.getElementById("bgParticles");
+  if(!bgCanvas) return;
+  const bgCtx = bgCanvas.getContext("2d");
+  const W = bgCanvas.width, H = bgCanvas.height;
+  const SHAPE_COLORS = ["#ffd23f","#ff8fa3","#9be8c4","#8fb8ff","#c9a0ff","#ffb066","#7fe0e8"];
+  const SHAPES = ["circle","square","triangle"];
+
+  function makeParticle(){
+    return {
+      x: Math.random()*W,
+      y: Math.random()*H,
+      size: 4 + Math.random()*9,
+      speed: 0.10 + Math.random()*0.22,
+      driftAmp: 10 + Math.random()*22,
+      driftPhase: Math.random()*1000,
+      rotSpeed: (Math.random()-0.5) * 0.0015,
+      rot: Math.random()*Math.PI*2,
+      opacity: 0.10 + Math.random()*0.26,
+      shape: SHAPES[Math.floor(Math.random()*SHAPES.length)],
+      color: SHAPE_COLORS[Math.floor(Math.random()*SHAPE_COLORS.length)]
+    };
+  }
+  const particles = Array.from({length: 46}, makeParticle);
+
+  function drawShape(p, x, y){
+    bgCtx.save();
+    bgCtx.translate(x, y);
+    bgCtx.rotate(p.rot);
+    bgCtx.globalAlpha = p.opacity;
+    bgCtx.fillStyle = p.color;
+    const s = p.size;
+    if(p.shape === "circle"){
+      bgCtx.beginPath(); bgCtx.arc(0,0,s/2,0,Math.PI*2); bgCtx.fill();
+    } else if(p.shape === "square"){
+      bgCtx.fillRect(-s/2, -s/2, s, s);
+    } else { // triangle
+      bgCtx.beginPath();
+      bgCtx.moveTo(0, -s/2);
+      bgCtx.lineTo(s/2, s/2);
+      bgCtx.lineTo(-s/2, s/2);
+      bgCtx.closePath();
+      bgCtx.fill();
+    }
+    bgCtx.restore();
+  }
+
+  function loop(ts){
+    bgCtx.clearRect(0,0,W,H);
+    particles.forEach(p=>{
+      const y = ((p.y - ts*p.speed) % (H+40) + (H+40)) % (H+40) - 20;
+      const x = p.x + Math.sin(ts/2200 + p.driftPhase) * p.driftAmp;
+      p.rot += p.rotSpeed * 16; // xoay chậm rãi
+      drawShape(p, x, y);
+    });
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
 
 /* ─── Sidebar ─── */
 function renderPlayers(){
