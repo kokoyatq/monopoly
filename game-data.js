@@ -86,7 +86,7 @@ const RAW_TILES = [
 
   ["Xuất phát","start",null,0,0],
 
-  ["Cty truyền thông","property","TN",350,120],
+  ["Cty truyền thông","property","DV",350,120],
 
   ["Nhà máy may","property","TN",250,90],
 

@@ -160,6 +160,10 @@
   .legend{display:flex; gap:8px; font-size:10.5px; font-weight:700; flex-wrap:wrap;}
   .legend span{display:flex; align-items:center; gap:4px; background:#f6f5fb; padding:3px 8px; border-radius:999px;}
   .legend .sw{width:10px; height:10px; border-radius:50%;}
+  @keyframes fadeSlideIn{
+    from{opacity:0; transform:translateY(18px);}
+    to{opacity:1; transform:translateY(0);}
+  }
 </style>
 </head>
 <body>
@@ -217,13 +221,52 @@
 </div>
 
 <div class="modal-overlay" id="buyModal">
-  <div class="modal-box">
-    <h3 id="buyTitle">Mua đất?</h3>
-    <p id="buyDesc" style="white-space:pre-line;"></p>
+  <div class="modal-box" style="text-align:center; min-width:340px;">
+    <h3 id="buyTitle" style="margin-bottom:4px;"></h3>
+    <p id="buyLandType" style="margin:0 0 12px; font-size:13px; color:#7b3ff2; font-weight:700;"></p>
+    <div id="buyPriceRow" style="display:flex; gap:10px; justify-content:center; margin-bottom:10px;">
+      <div style="background:#f1ebff; border-radius:12px; padding:10px 18px; flex:1;">
+        <div style="font-size:11px; color:#7b3ff2; font-weight:700; margin-bottom:2px;">💰 Giá mua</div>
+        <div id="buyPrice" style="font-size:22px; font-weight:800; color:#2d2150;"></div>
+      </div>
+      <div style="background:#fff7e6; border-radius:12px; padding:10px 18px; flex:1;">
+        <div style="font-size:11px; color:#e0680b; font-weight:700; margin-bottom:2px;">🏠 Phí mặt bằng</div>
+        <div id="buyRent" style="font-size:22px; font-weight:800; color:#2d2150;"></div>
+      </div>
+    </div>
+    <p id="buyMoney" style="margin:0 0 4px; font-size:13px; font-weight:700;"></p>
+    <p id="buyWarn" style="margin:0 0 14px; color:#e11d48; font-weight:700; font-size:13px; min-height:18px;"></p>
     <div class="row-flex">
       <button class="btn-buy" id="btnBuyYes">✅ Mua</button>
       <button class="btn-skip" id="btnBuyNo">❌ Bỏ qua</button>
     </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="rentModal">
+  <div class="modal-box" style="text-align:center; min-width:320px;">
+    <h3 id="rentTitle" style="margin-bottom:6px;">💸 Trả tiền thuê</h3>
+    <p id="rentDesc" style="font-size:15px; font-weight:700; margin:0 0 6px;"></p>
+    <p id="rentAmount" style="font-size:28px; font-weight:800; color:#e11d48; margin:0 0 16px;"></p>
+    <button class="btn-skip" id="btnRentOk" style="width:100%;">OK</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="stateModal">
+  <div class="modal-box" style="text-align:center; min-width:300px;">
+    <h3 style="color:#1e93a3;">⚡ Ô Dịch vụ Nhà nước</h3>
+    <p style="font-size:14px; font-weight:700; margin:0 0 6px;">Doanh nghiệp không được phép mua ô này.</p>
+    <p style="font-size:13px; color:#555; margin:0 0 18px;">Bạn phải trả phí <b>100$</b> cho Nhà nước.</p>
+    <button class="btn-skip" id="btnStateOk" style="width:100%;">OK</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="taxModal">
+  <div class="modal-box" style="text-align:center; min-width:300px;">
+    <h3 style="color:#d63333;">💸 Ô Thuế</h3>
+    <p style="font-size:14px; font-weight:700; margin:0 0 6px; font-style:italic;">"Đóng thuế là nghĩa vụ của mỗi cá nhân."</p>
+    <p style="font-size:13px; color:#555; margin:0 0 18px;">Bạn phải nộp <b>100$</b>.</p>
+    <button class="btn-skip" id="btnTaxOk" style="width:100%;">OK</button>
   </div>
 </div>
 
@@ -982,7 +1025,7 @@ function renderPlayers(){
 function renderLog(){
   const el=document.getElementById("log");
   el.innerHTML=state.log.map(l=>`<p>${l}</p>`).join("");
-  el.scrollTop=el.scrollHeight;
+  el.scrollTop=0;
 }
 function updateRollButton(){
   const btn=document.getElementById("btnRoll");
@@ -1000,18 +1043,37 @@ function renderResultModal(){
   modal.classList.add("show");
   if(resultShown) return;
   resultShown=true;
-  const ranked=[...state.players].filter(p=>p.status!=="eliminated").sort((a,b)=>totalAssets(state,b)-totalAssets(state,a));
-  let html=`<tr><th>#</th><th>Đội</th><th>Tiền</th><th>Giá trị đất</th><th>Tổng TS</th><th>Trạng thái</th></tr>`;
-  ranked.forEach((p,i)=>{
+
+  const ranked=[...state.players]
+    .filter(p=>p.status!=="eliminated")
+    .sort((a,b)=>totalAssets(state,b)-totalAssets(state,a));
+
+  const tbody=document.getElementById("resultTable");
+  tbody.innerHTML=`<tr><th>#</th><th>Đội</th><th>Tiền</th><th>Giá trị đất</th><th>Tổng TS</th><th>Trạng thái</th></tr>`;
+
+  // Reveal từ hạng thấp nhất → hạng 1, mỗi hạng cách nhau 900ms để tạo cảm giác hồi hộp
+  const total = ranked.length;
+  ranked.slice().reverse().forEach((p, revIdx)=>{
+    const rank = total - 1 - revIdx; // vị trí thật trong mảng đã sort (0 = nhất)
+    const medal = rank===0?"🥇":rank===1?"🥈":rank===2?"🥉":`#${rank+1}`;
     const propVal=p.properties.reduce((sum,idx)=>sum+RAW_TILES[idx][3],0);
     const equityStr=p.status==="shareholder"
       ? `Cổ đông ${Math.round((p.shareholderEquity||0)*100)}% của ${state.players[p.shareholderOf].name}`
       : "Độc lập";
-    html+=`<tr><td>${i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1}</td><td>${p.name}</td>
-      <td>${p.money.toLocaleString()}$</td><td>${propVal.toLocaleString()}$</td>
-      <td><b>${totalAssets(state,p).toLocaleString()}$</b></td><td>${equityStr}</td></tr>`;
+    setTimeout(()=>{
+      const tr=document.createElement("tr");
+      tr.style.cssText="animation:fadeSlideIn .4s ease; opacity:0;";
+      tr.innerHTML=`<td style="font-size:18px; text-align:center;">${medal}</td>
+        <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${p.color};margin-right:6px;"></span>${p.name}</td>
+        <td>${p.money.toLocaleString()}$</td>
+        <td>${propVal.toLocaleString()}$</td>
+        <td><b>${totalAssets(state,p).toLocaleString()}$</b></td>
+        <td style="font-size:11px;">${equityStr}</td>`;
+      tbody.appendChild(tr);
+      // Force reflow để animation chạy được
+      requestAnimationFrame(()=>{ tr.style.opacity="1"; });
+    }, revIdx * 900);
   });
-  document.getElementById("resultTable").innerHTML=html;
 }
 
 /* ─── Roll button ─── */
@@ -1044,16 +1106,26 @@ document.getElementById("btnRoll").addEventListener("click", async ()=>{
   state = result.state;
   if(state.lastEventId) lastSeenEventId = state.lastEventId;
 
-  // Hiện xúc xắc 4s → animate token → mở modal nếu cần
+  // Hiện xúc xắc 4s → animate token → mở modal phù hợp theo loại ô
   showDiceOnBoard(d1, d2, ()=>{
     animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
       sequenceLocked=false;
       renderAll();
       queueEventBanners(result.events);
       applyBoardFx(result.events, newPos);
-      if(result.state.pendingBuyTile !== undefined && result.state.pendingBuyTile !== null){
-        window.__pendingBuy = { idx: result.state.pendingBuyTile };
-        openBuyModal(result.state.pendingBuyTile);
+      const landedTile = result.state.tiles[newPos];
+      if(!isDisplayMode){
+        if(result.state.pendingBuyTile !== undefined && result.state.pendingBuyTile !== null){
+          window.__pendingBuy = { idx: result.state.pendingBuyTile };
+          openBuyModal(result.state.pendingBuyTile);
+        } else if(landedTile && landedTile.type === "tax"){
+          taxModal.classList.add("show");
+        } else if(landedTile && landedTile.type === "state"){
+          stateModal.classList.add("show");
+        } else if(landedTile && landedTile.type === "property" && landedTile.owner !== null && landedTile.owner !== myPlayerId){
+          const rent = (landedTile.rent||0) * (landedTile.rentMultiplier||1);
+          openRentModal(landedTile.name, result.state.players[landedTile.owner].name, rent);
+        }
       }
     });
   });
@@ -1072,6 +1144,7 @@ function nextTurnIndexFor(s){
 /* ─── Khôi phục buy modal nếu reload khi đang chờ mua đất ─── */
 function checkPendingBuy(){
   if(myPlayerId === null) return;
+  if(isDisplayMode) return;
   if(state.pendingBuyTile === null || state.pendingBuyTile === undefined) return;
   if(currentPlayerId(state) !== myPlayerId) return;
   if(buyModal.classList.contains("show")) return;
@@ -1086,13 +1159,36 @@ function openBuyModal(idx){
   const tile=tileInfo(idx);
   const player=state.players[myPlayerId];
   const cantAfford=player.money<tile.price;
-  document.getElementById("buyTitle").textContent=`${tile.name} (${tile.landType}) — ô ${idx}`;
-  let desc=`Giá: ${tile.price.toLocaleString()}$ — Phí mặt bằng: ${tile.rent.toLocaleString()}$.\nĐội bạn có ${player.money.toLocaleString()}$.`;
-  if(cantAfford) desc+=`\n⛔ Không đủ tiền.`;
-  document.getElementById("buyDesc").textContent=desc;
+  const landNames={NN:"🌾 Nông nghiệp", TN:"🏬 Thương nghiệp", DV:"🏥 Dịch vụ"};
+  document.getElementById("buyTitle").textContent=`🏠 ${tile.name}`;
+  document.getElementById("buyLandType").textContent=landNames[tile.landType]||"";
+  document.getElementById("buyPrice").textContent=`${tile.price.toLocaleString()}$`;
+  document.getElementById("buyRent").textContent=`${tile.rent.toLocaleString()}$`;
+  document.getElementById("buyMoney").textContent=`Đội bạn hiện có: ${player.money.toLocaleString()}$`;
+  document.getElementById("buyWarn").textContent=cantAfford?"⛔ Không đủ tiền để mua":"";
   document.getElementById("btnBuyYes").disabled=cantAfford;
   buyModal.classList.add("show");
 }
+
+/* ─── Rent modal (thông báo trả tiền thuê — chỉ dùng để thông báo, không có action server vì server đã tự trừ rồi) ─── */
+const rentModal=document.getElementById("rentModal");
+function openRentModal(tileName, ownerName, amount){
+  document.getElementById("rentTitle").textContent=`💸 Trả tiền thuê — ${tileName}`;
+  document.getElementById("rentDesc").textContent=`Đội của bạn đã dừng trên đất của ${ownerName}.`;
+  document.getElementById("rentAmount").textContent=`-${amount.toLocaleString()}$`;
+  rentModal.classList.add("show");
+}
+document.getElementById("btnRentOk").addEventListener("click",()=>{
+  rentModal.classList.remove("show");
+});
+
+/* ─── State modal (Điện Lực / Nước) ─── */
+const stateModal=document.getElementById("stateModal");
+document.getElementById("btnStateOk").addEventListener("click",()=>stateModal.classList.remove("show"));
+
+/* ─── Tax modal (Thuế) ─── */
+const taxModal=document.getElementById("taxModal");
+document.getElementById("btnTaxOk").addEventListener("click",()=>taxModal.classList.remove("show"));
 document.getElementById("btnBuyYes").addEventListener("click", async ()=>{
   if(sequenceLocked) return;
   sequenceLocked=true; updateRollButton();
@@ -1162,9 +1258,19 @@ document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
         renderAll();
         queueEventBanners(result.events);
         applyBoardFx(result.events, newPos);
-        if(state.pendingBuyTile !== undefined && state.pendingBuyTile !== null){
-          window.__pendingBuy = { idx: state.pendingBuyTile };
-          openBuyModal(state.pendingBuyTile);
+        const landedTile = state.tiles[newPos];
+        if(!isDisplayMode){
+          if(state.pendingBuyTile !== undefined && state.pendingBuyTile !== null){
+            window.__pendingBuy = { idx: state.pendingBuyTile };
+            openBuyModal(state.pendingBuyTile);
+          } else if(landedTile && landedTile.type === "tax"){
+            taxModal.classList.add("show");
+          } else if(landedTile && landedTile.type === "state"){
+            stateModal.classList.add("show");
+          } else if(landedTile && landedTile.type === "property" && landedTile.owner !== null && landedTile.owner !== myPlayerId){
+            const rent = (landedTile.rent||0) * (landedTile.rentMultiplier||1);
+            openRentModal(landedTile.name, state.players[landedTile.owner].name, rent);
+          }
         }
       });
     } else {
