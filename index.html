@@ -858,7 +858,7 @@ function drawTile(tile, idx, pos, ts){
         ctx.fillText(lines[0], cxc, cyc-gap*0.9);
         ctx.fillText(lines[1], cxc, cyc-gap*0.1);
       }
-      const priceSz = fitFont(`Mua:${tile.price}$`, maxW*0.9, 700, nSz*0.62, "Nunito");
+      const priceSz = fitFont(`Mua:${tile.price}$`, maxW*0.9, 700, nSz*0.72, "Nunito");
       ctx.fillStyle="#c0392b";
       const priceY = cyc + gap*(lines.length===1 ? 0.55 : 1.0);
       ctx.fillText(`Mua:${tile.price}$`, cxc, priceY);
