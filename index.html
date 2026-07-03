@@ -41,7 +41,7 @@
     background:linear-gradient(150deg, #f0ddb8 0%, #d9bd8c 50%, #c9a876 100%);
     border-radius:22px;
     box-shadow:0 12px 0 rgba(0,0,0,.25), 0 18px 40px rgba(0,0,0,.45), inset 0 0 0 6px rgba(255,255,255,.22);
-    max-width:88vmin; max-height:88vmin; display:block;
+    max-width:92vmin; max-height:92vmin; display:block;
   }
 
   #diceOverlay{
@@ -175,7 +175,7 @@
     <span id="suggestText" style="color:#e0680b; display:none;">⏰ Chỉ MC mới chuyển giai đoạn được</span>
   </div>
   <div id="canvasWrap">
-    <canvas id="bgParticles" width="980" height="980"></canvas>
+    <canvas id="bgParticles" width="1140" height="1140"></canvas>
     <canvas id="boardCanvas" width="880" height="880"></canvas>
     <div id="diceOverlay"><div class="dice-stage" id="diceStage"></div></div>
     <div id="diceSumBadge"></div>
@@ -348,7 +348,7 @@ const CW = 92;            // corner tile size
 const SW = 64;            // side tile: narrow dim (along edge)
 const SH = 92;            // side tile: deep dim (into board) — same as CW
 const BAND = 14;          // color band thickness
-const BOARD_W = 760;      // must equal canvas width
+const BOARD_W = 880;      // must equal canvas width
 
 // Trả về mảng {x,y,w,h,side} cho từng ô (side = 'top'|'right'|'bottom'|'left'|'corner-tl'|...)
 function buildTileRects(){
