@@ -790,7 +790,7 @@ function drawTile(tile, idx, pos, ts){
       ctx.fillStyle=LAND_COLOR_SOLID[tile.landType]||"#ccc";
       ctx.fillRect(tx,ty,tw,BAND);
       const displayRent=tile.rent*(state.tiles[idx].rentMultiplier||1);
-      const BASE=Math.max(9,th*0.11);
+      const BASE=Math.max(11,th*0.135);
       const lines=wrapText(tile.name, tw*0.88, 700, BASE, "Nunito");
       const nSz=fitFont(lines[0], tw*0.88, 700, BASE, "Nunito");
       ctx.fillStyle="#2d2150";
@@ -800,9 +800,9 @@ function drawTile(tile, idx, pos, ts){
         ctx.fillText(lines[0], cxc, cyc-nSz*1.2);
         ctx.fillText(lines[1], cxc, cyc-nSz*0.1);
       }
-      fitFont(`${tile.price}$  MB:${displayRent}$`, tw*0.85, 600, Math.max(7.5,nSz*0.82), "Nunito");
+      fitFont(`Mua:${tile.price}$  MB:${displayRent}$`, tw*0.85, 700, Math.max(9,nSz*0.88), "Nunito");
       ctx.fillStyle="#555";
-      ctx.fillText(`${tile.price}$  MB:${displayRent}$`, cxc, cyc+nSz*1.1);
+      ctx.fillText(`Mua:${tile.price}$  MB:${displayRent}$`, cxc, cyc+nSz*1.1);
     } else {
       // Ô góc đặc biệt: Tù / Xuất phát
       const iconMap={jail:"🚔",tax:"💸",start:"🚩",state:"⚡"};
@@ -833,7 +833,7 @@ function drawTile(tile, idx, pos, ts){
     // Sau khi xoay: chiều ngang available = cH (92-14=78px) cho top/bottom
     //               chiều ngang available = cW (92-14=78px) cho left/right (không xoay)
     const maxW = (side==='top'||side==='bottom') ? cH*0.9 : cW*0.9;
-    const BASE  = Math.max(9, Math.min(cW,cH)*0.16);
+    const BASE  = Math.max(11, Math.min(cW,cH)*0.19);
 
     if(tile.type==="property"){
       const displayRent=tile.rent*(state.tiles[idx].rentMultiplier||1);
@@ -847,9 +847,9 @@ function drawTile(tile, idx, pos, ts){
         ctx.fillText(lines[0], cxc, cyc-gap*0.9);
         ctx.fillText(lines[1], cxc, cyc-gap*0.1);
       }
-      const priceSz=fitFont(`${tile.price}$  MB:${displayRent}$`, maxW*0.9, 600, Math.max(7,nSz*0.82), "Nunito");
+      const priceSz=fitFont(`Mua:${tile.price}$  MB:${displayRent}$`, maxW*0.9, 700, Math.max(8.5,nSz*0.88), "Nunito");
       ctx.fillStyle="#555";
-      ctx.fillText(`${tile.price}$  MB:${displayRent}$`, cxc, cyc+gap*(lines.length===1?0.6:1.05));
+      ctx.fillText(`Mua:${tile.price}$  MB:${displayRent}$`, cxc, cyc+gap*(lines.length===1?0.6:1.05));
     } else if(tile.type==="tax"){
       const lines=wrapText(tile.name, maxW, 700, BASE, "Nunito");
       const nSz=fitFont(lines[0], maxW, 700, BASE, "Nunito");
