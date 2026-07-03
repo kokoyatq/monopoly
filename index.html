@@ -299,6 +299,15 @@ const warnedWeak = new Set();
 let state = null;
 const canvas = document.getElementById("boardCanvas");
 const ctx = canvas.getContext("2d");
+const DPR = window.devicePixelRatio || 1;
+if(DPR > 1){
+  const w = canvas.width, h = canvas.height;
+  canvas.width  = w * DPR;
+  canvas.height = h * DPR;
+  canvas.style.width  = w + "px";
+  canvas.style.height = h + "px";
+  ctx.scale(DPR, DPR);
+}
 
 /* ─── Hiệu ứng đồ họa giữa bàn (rung ô / sáng lóe Xuất phát / flash mua đất / hạt bụi vàng) ─── */
 let tileFx = [];      // {type:'shake'|'pulse'|'flash', idx, start, duration}
@@ -849,7 +858,7 @@ function drawTile(tile, idx, pos, ts){
         ctx.fillText(lines[0], cxc, cyc-gap*0.9);
         ctx.fillText(lines[1], cxc, cyc-gap*0.1);
       }
-      const priceSz = fitFont(`Mua:${tile.price}$`, maxW*0.9, 700, nSz*0.82, "Nunito");
+      const priceSz = fitFont(`Mua:${tile.price}$`, maxW*0.9, 700, nSz*0.62, "Nunito");
       ctx.fillStyle="#c0392b";
       const priceY = cyc + gap*(lines.length===1 ? 0.55 : 1.0);
       ctx.fillText(`Mua:${tile.price}$`, cxc, priceY);
