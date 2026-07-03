@@ -319,7 +319,10 @@ function spawnBuyFlash(idx){
   if(idx==null||idx<0) return;
   tileFx.push({type:'flash', idx, start: performance.now(), duration: 700});
   const pos = positions[idx];
-  if(pos) floatTexts.push({x:pos.x+CELL/2, y:pos.y+CELL*0.32, text:"+🏠", color:"#ffd23f", start: performance.now(), duration: 1100});
+  if(pos){
+    const c = tileCenter(pos);
+    floatTexts.push({x:c.cx, y:pos.y+pos.h*0.22, text:"+🏠", color:"#ffd23f", start: performance.now(), duration: 1100});
+  }
 }
 // Hiện hiệu ứng phù hợp dựa trên các dòng "events" server trả về (banner cũng dùng chung mảng này)
 function applyBoardFx(events, landedIdx){
@@ -339,21 +342,42 @@ function findNewlyBoughtTile(prevState, newState){
   return null;
 }
 
-/* ─── Board geometry ─── */
-function buildPositions(gridSize, cellPx){
-  const coords = [];
-  for(let c=0;c<gridSize;c++) coords.push([c,0]);
-  for(let r=1;r<gridSize;r++) coords.push([gridSize-1,r]);
-  for(let c=gridSize-2;c>=0;c--) coords.push([c,gridSize-1]);
-  for(let r=gridSize-2;r>=1;r--) coords.push([0,r]);
-  return coords.slice(0,TOTAL_TILES).map(([c,r])=>({x:c*cellPx, y:r*cellPx}));
+/* ─── Board geometry — Monopoly style ─── */
+// CW = góc vuông lớn, SW = chiều ngắn ô cạnh (dọc theo viền), SH = chiều sâu ô cạnh (vào trong bàn)
+const CW = 92;            // corner tile size
+const SW = 64;            // side tile: narrow dim (along edge)
+const SH = 92;            // side tile: deep dim (into board) — same as CW
+const BAND = 14;          // color band thickness
+const BOARD_W = 760;      // must equal canvas width
+
+// Trả về mảng {x,y,w,h,side} cho từng ô (side = 'top'|'right'|'bottom'|'left'|'corner-tl'|...)
+function buildTileRects(){
+  const rects = [];
+  // Top row: tiles 0–10 (left→right)
+  rects.push({x:0,           y:0,         w:CW, h:CW, side:'corner-tl'}); // 0
+  for(let i=1;i<=9;i++) rects.push({x:CW+(i-1)*SW, y:0, w:SW, h:SH, side:'top'});
+  rects.push({x:BOARD_W-CW,  y:0,         w:CW, h:CW, side:'corner-tr'}); // 10
+  // Right col: tiles 11–19 (top→bottom) then corner 20
+  for(let i=0;i<9;i++) rects.push({x:BOARD_W-CW, y:CW+i*SW, w:CW, h:SW, side:'right'});
+  rects.push({x:BOARD_W-CW,  y:BOARD_W-CW,w:CW, h:CW, side:'corner-br'}); // 20
+  // Bottom row: tiles 21–29 (right→left) then corner 30
+  for(let i=0;i<9;i++) rects.push({x:BOARD_W-CW-SW*(i+1), y:BOARD_W-CW, w:SW, h:SH, side:'bottom'});
+  rects.push({x:0,           y:BOARD_W-CW,w:CW, h:CW, side:'corner-bl'}); // 30
+  // Left col: tiles 31–39 (bottom→top)
+  for(let i=0;i<9;i++) rects.push({x:0, y:BOARD_W-CW-SW*(i+1), w:CW, h:SW, side:'left'});
+  return rects; // 40 tiles
 }
-const GRID = 11;
-const CELL = 760/GRID;
-const positions = buildPositions(GRID, CELL);
+const positions = buildTileRects();
 const displayedPos = {};
+// CELL kept as compat alias for places that still reference it (token radius, float text size)
+const CELL = SW;
+const LAND_COLOR_SOLID = {NN:"#4ade80", TN:"#fb923c", DV:"#c084fc"};
+// LAND_BG kept for compat; won't be used in new drawTile
+const LAND_BG = {NN:["#a4e878","#5fae3a"], TN:["#ffc463","#e08a1c"], DV:["#d6a9fb","#9255d6"]};
 const LAND_ICON = {NN:"🌾", TN:"🏬", DV:"🏥"};
-const LAND_BG   = {NN:["#a4e878","#5fae3a"], TN:["#ffc463","#e08a1c"], DV:["#d6a9fb","#9255d6"]};
+
+// Helper: center of a tile rect (for token placement)
+function tileCenter(posRect){ return {cx: posRect.x+posRect.w/2, cy: posRect.y+posRect.h/2}; }
 
 /* ─── Init ─── */
 async function init(){
@@ -498,6 +522,8 @@ function animateTokenMove(playerId, from, to, onDone){
   const totalDuration = steps.length * MS_PER_CELL;
   let startTime = null;
   state.players[playerId].isAnimating = true;
+  const TOKEN_R = 9;
+  const player = state.players[playerId];
   function step(timestamp){
     if(!startTime) startTime = timestamp;
     const elapsed = timestamp - startTime;
@@ -515,18 +541,15 @@ function animateTokenMove(playerId, from, to, onDone){
     const stepProgress = currentStepFloat - currentStepIndex;
     const prevIdx = currentStepIndex === 0 ? from : steps[currentStepIndex - 1];
     const nextIdx = steps[Math.min(currentStepIndex, steps.length-1)];
-    const p0 = positions[prevIdx];
-    const p1 = positions[nextIdx];
-    const currentX = p0.x + (p1.x - p0.x) * stepProgress;
-    const currentY = p0.y + (p1.y - p0.y) * stepProgress;
+    const c0 = tileCenter(positions[prevIdx]);
+    const c1 = tileCenter(positions[nextIdx]);
+    const currentX = c0.cx + (c1.cx - c0.cx) * stepProgress;
+    const currentY = c0.cy + (c1.cy - c0.cy) * stepProgress;
     renderBoard();
-    const player = state.players[playerId];
-    const cx = currentX + CELL / 2;
-    const cy = currentY + CELL / 2;
     ctx.save();
     ctx.shadowColor="rgba(0,0,0,.4)"; ctx.shadowBlur=4; ctx.shadowOffsetY=2;
     ctx.beginPath(); ctx.fillStyle=player.color;
-    ctx.arc(cx, cy, CELL*0.11, 0, Math.PI*2); ctx.fill();
+    ctx.arc(currentX, currentY, TOKEN_R, 0, Math.PI*2); ctx.fill();
     ctx.shadowBlur=0; ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
     ctx.restore();
     requestAnimationFrame(step);
@@ -697,101 +720,137 @@ function fitFont(text, maxWidth, weight, baseSize, family){
   return size;
 }
 function drawTile(tile, idx, pos, ts){
-  const pad=2.5, x=pos.x+pad, y=pos.y+pad, w=CELL-pad*2, h=CELL-pad*2;
+  const {x, y, w, h, side} = pos;
+  const pad = 1.5;
+  const tx = x+pad, ty = y+pad, tw = w-pad*2, th = h-pad*2;
   ctx.save();
 
   // Rung nhẹ khi vừa đáp vào ô tốn tiền/vào tù
   const shakeFx = tileFx.find(f=>f.idx===idx && f.type==='shake');
   if(shakeFx){
-    const p = (ts - shakeFx.start) / shakeFx.duration;
-    const decay = Math.max(0, 1-p);
-    ctx.translate(Math.sin(p*38) * 4 * decay, 0);
+    const prog = (ts - shakeFx.start)/shakeFx.duration;
+    ctx.translate(Math.sin(prog*38)*3.5*Math.max(0,1-prog), 0);
   }
 
+  // ── Nền trắng ──
+  roundRect(tx, ty, tw, th, 5);
+  ctx.fillStyle = "#ffffff"; ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.18)"; ctx.lineWidth = 1; ctx.stroke();
+
+  // ── Thanh màu loại đất (chỉ cho ô property) ở cạnh NGOÀI viền bàn ──
+  const isCorner = side.startsWith('corner');
+  if(tile.type==="property" && !isCorner){
+    const bandColor = LAND_COLOR_SOLID[tile.landType] || "#ccc";
+    ctx.fillStyle = bandColor;
+    ctx.strokeStyle = "rgba(0,0,0,0.12)"; ctx.lineWidth=0.8;
+    if(side==='top'){
+      roundRect(tx, ty, tw, BAND, 5);
+    } else if(side==='bottom'){
+      roundRect(tx, ty+th-BAND, tw, BAND, 5);
+    } else if(side==='right'){
+      roundRect(tx+tw-BAND, ty, BAND, th, 5);
+    } else if(side==='left'){
+      roundRect(tx, ty, BAND, th, 5);
+    }
+    ctx.fill(); ctx.stroke();
+  }
+
+  // ── Viền chủ sở hữu: đường viền màu đội chủ, thay glow bằng đường viền rõ ──
   const owner = tile.type==="property" ? state.tiles[idx].owner : null;
-  if(owner!==null){
+  if(owner !== null){
     const ownerColor = state.players[owner].color;
-    const pulse = 0.55 + 0.45*Math.sin((ts||0)/650 + idx*0.4);
-    // glow nền theo màu chủ sở hữu
-    roundRect(x-2.5,y-2.5,w+5,h+5,11);
-    ctx.shadowColor=ownerColor; ctx.shadowBlur=9+9*pulse;
-    ctx.fillStyle=ownerColor; ctx.fill(); ctx.shadowBlur=0;
-    // viền rõ nét thêm ngoài glow để dễ nhận biết hơn
-    roundRect(x-1.5,y-1.5,w+3,h+3,9.5);
-    ctx.lineWidth=2.6; ctx.strokeStyle=ownerColor; ctx.globalAlpha=0.9; ctx.stroke(); ctx.globalAlpha=1;
-  }
-  roundRect(x,y,w,h,9);
-  let grad;
-  if(tile.type==="property"){ const [c1,c2]=LAND_BG[tile.landType]; grad=grd(x,y,h,c1,c2); }
-  else if(tile.type==="jail"){  grad=grd(x,y,h,"#6ea8fe","#2f5fd0"); }
-  else if(tile.type==="tax"){   grad=grd(x,y,h,"#ff8a8a","#d63333"); }
-  else if(tile.type==="start"){ grad=grd(x,y,h,"#7be08a","#1f9e46"); }
-  else if(tile.type==="state"){ grad=grd(x,y,h,"#7fd7e0","#1e93a3"); }
-  else { grad=grd(x,y,h,"#ccc","#999"); }
-  ctx.fillStyle=grad; ctx.fill();
-  if(owner!==null){ ctx.fillStyle="rgba(0,0,0,.18)"; ctx.fill(); }
-  ctx.strokeStyle="rgba(255,255,255,.5)"; ctx.lineWidth=1.4; ctx.stroke();
-
-  // 1. Icon lớn ở giữa ô cờ (to hơn bản cũ một chút)
-  ctx.font=`${Math.max(13,CELL*0.34)}px serif`;
-  ctx.textAlign="center"; ctx.textBaseline="middle";
-  let icon="•";
-  if(tile.type==="property") icon=LAND_ICON[tile.landType];
-  if(tile.type==="jail")  icon="🚔";
-  if(tile.type==="tax")   icon="💸";
-  if(tile.type==="start") icon="🚩";
-  if(tile.type==="state") icon="⚡";
-  ctx.fillText(icon, x+w/2, y+h*0.33);
-
-  // 2. Giá mua / giá thuê
-  if (tile.type === "property") {
-    ctx.fillStyle = "rgba(255,255,255,0.95)";
-    const displayRent = tile.rent * (state.tiles[idx].rentMultiplier || 1);
-    const rentLabel = (state.tiles[idx].rentMultiplier||1) > 1 ? `🏠${displayRent}⚠️` : `🏠${displayRent}`;
-    const priceText = `💰${tile.price} / ${rentLabel}`;
-    fitFont(priceText, w*0.92, 600, Math.max(7.5, CELL*0.11), "Nunito");
-    ctx.fillText(priceText, x+w/2, y+h*0.56);
-  } else if (tile.type === "tax" || tile.type === "state") {
-    fitFont(`-100$`, w*0.8, 700, Math.max(8, CELL*0.12), "Nunito");
-    ctx.fillStyle = "#fff";
-    ctx.fillText(`-100$`, x+w/2, y+h*0.56);
+    roundRect(tx, ty, tw, th, 5);
+    ctx.strokeStyle = ownerColor;
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
   }
 
-  // 3. Tên ô cờ — tự co cỡ chữ để KHÔNG BAO GIỜ tràn sang ô bên cạnh (an toàn cho tiếng Việt có dấu/dài)
-  const labelY=y+h*0.82;
-  const maxLabelWidth = w*0.94;
-  fitFont(tile.name, maxLabelWidth, 700, Math.max(8,CELL*0.14), "Nunito");
-  const tw=Math.min(ctx.measureText(tile.name).width, maxLabelWidth);
-  roundRect(x+w/2-tw/2-4, labelY-h*0.13, tw+8, h*0.22, 5);
-  ctx.fillStyle="rgba(255,255,255,.88)"; ctx.fill();
-  ctx.fillStyle="#2d2150"; ctx.fillText(tile.name, x+w/2, labelY);
+  // ── Nội dung bên trong ô ──
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
 
-  // 4. Sáng lóe khi có người vừa đi qua/đáp ô Xuất phát
+  if(isCorner){
+    // Ô góc: vẽ icon to + tên
+    const cxc = tx+tw/2, cyc = ty+th/2;
+    ctx.font = `${Math.max(20, th*0.38)}px serif`;
+    let icon = "•";
+    if(tile.type==="jail")  icon="🚔";
+    if(tile.type==="tax")   icon="💸";
+    if(tile.type==="start") icon="🚩";
+    if(tile.type==="state") icon="⚡";
+    if(tile.type==="property") icon = LAND_ICON[tile.landType]||"•";
+    ctx.fillText(icon, cxc, cyc - th*0.12);
+    fitFont(tile.name, tw*0.88, 700, Math.max(8, th*0.13), "Nunito");
+    ctx.fillStyle="#2d2150";
+    ctx.fillText(tile.name, cxc, cyc + th*0.28);
+  } else {
+    // Ô cạnh: tên + giá, hướng văn bản theo vị trí
+    // Tính vùng nội dung (loại bỏ thanh màu + padding)
+    let contentX = tx, contentY = ty, contentW = tw, contentH = th;
+    if(side==='top')    { contentY = ty+BAND; contentH = th-BAND; }
+    if(side==='bottom') { contentH = th-BAND; }
+    if(side==='right')  { contentW = tw-BAND; }
+    if(side==='left')   { contentX = tx+BAND; contentW = tw-BAND; }
+    const cxc = contentX+contentW/2, cyc = contentY+contentH/2;
+
+    // Xoay context cho ô trái/phải để text đọc hướng vào tâm bàn
+    ctx.translate(cxc, cyc);
+    if(side==='right') ctx.rotate(Math.PI/2);
+    if(side==='left')  ctx.rotate(-Math.PI/2);
+    ctx.translate(-cxc, -cyc);
+
+    // Tên ô: luôn ở giữa vùng nội dung
+    const maxNameW = (side==='left'||side==='right') ? contentH*0.88 : contentW*0.88;
+    const maxNameH = (side==='left'||side==='right') ? contentW*0.88 : contentH*0.88;
+    const nameSize = fitFont(tile.name, maxNameW, 700, Math.max(7.5, Math.min(contentW,contentH)*0.16), "Nunito");
+    ctx.fillStyle = "#2d2150";
+
+    if(tile.type==="property"){
+      // Property: tên + giá/thuê
+      const displayRent = tile.rent*(state.tiles[idx].rentMultiplier||1);
+      const priceStr = `${tile.price}$`;
+      const rentStr  = `MB: ${displayRent}$`;
+      const lineGap  = nameSize*1.25;
+      ctx.fillText(tile.name, cxc, cyc - lineGap*0.55);
+      fitFont(priceStr, maxNameW*0.85, 600, Math.max(6.5, nameSize*0.82), "Nunito");
+      ctx.fillStyle="#555";
+      ctx.fillText(priceStr+" / "+rentStr, cxc, cyc + lineGap*0.55);
+    } else if(tile.type==="tax"){
+      ctx.fillStyle="#d63333"; ctx.font=`700 ${nameSize}px 'Nunito',sans-serif`;
+      ctx.fillText(tile.name, cxc, cyc-nameSize*0.55);
+      fitFont("-100$", maxNameW*0.85, 800, nameSize*0.85, "Nunito");
+      ctx.fillText("-100$", cxc, cyc+nameSize*0.55);
+    } else if(tile.type==="state"){
+      ctx.fillStyle="#1e93a3"; ctx.font=`700 ${nameSize}px 'Nunito',sans-serif`;
+      ctx.fillText(tile.name, cxc, cyc-nameSize*0.55);
+      fitFont("-100$", maxNameW*0.85, 800, nameSize*0.85, "Nunito");
+      ctx.fillStyle="#555"; ctx.fillText("-100$", cxc, cyc+nameSize*0.55);
+    } else {
+      ctx.fillText(tile.name, cxc, cyc);
+    }
+  }
+
+  // ── Sáng lóe ô Xuất phát ──
   if(tile.type==='start'){
     const pulseFx = tileFx.find(f=>f.idx===idx && f.type==='pulse');
     if(pulseFx){
-      const p=(ts-pulseFx.start)/pulseFx.duration;
-      if(p<1){
+      const pp=(ts-pulseFx.start)/pulseFx.duration;
+      if(pp<1){
         ctx.save();
-        ctx.globalAlpha = Math.max(0,(1-p)*0.85);
-        ctx.beginPath();
-        ctx.strokeStyle="#ffe066"; ctx.lineWidth=4.5;
-        ctx.arc(x+w/2, y+h/2, (w/2)*(0.5+p*1.0), 0, Math.PI*2);
-        ctx.stroke();
+        ctx.globalAlpha=Math.max(0,(1-pp)*0.8);
+        ctx.strokeStyle="#ffe066"; ctx.lineWidth=4;
+        ctx.beginPath(); ctx.arc(tx+tw/2,ty+th/2,(Math.min(tw,th)/2)*(0.4+pp),0,Math.PI*2); ctx.stroke();
         ctx.restore();
       }
     }
   }
 
-  // 5. Flash sáng khi vừa mua đất thành công
+  // ── Flash mua đất ──
   const flashFx = tileFx.find(f=>f.idx===idx && f.type==='flash');
   if(flashFx){
-    const p=(ts-flashFx.start)/flashFx.duration;
-    if(p<1){
-      ctx.save();
-      ctx.globalAlpha = Math.max(0,(1-p)*0.55);
-      roundRect(x,y,w,h,9);
-      ctx.fillStyle="#fff7cc"; ctx.fill();
+    const pp=(ts-flashFx.start)/flashFx.duration;
+    if(pp<1){
+      ctx.save(); ctx.globalAlpha=Math.max(0,(1-pp)*0.5);
+      roundRect(tx,ty,tw,th,5); ctx.fillStyle="#fff7cc"; ctx.fill();
       ctx.restore();
     }
   }
@@ -807,36 +866,35 @@ function drawTokens(ts){
     const pos=displayedPos[p.id]!==undefined?displayedPos[p.id]:p.position;
     byTile[pos]=byTile[pos]||[]; byTile[pos].push(p);
   });
+  const TOKEN_R = 9; // token radius cố định, không dùng CELL nữa
   Object.keys(byTile).forEach(posIdx=>{
     const pos=positions[posIdx];
+    const {cx:baseCx, cy:baseCy} = tileCenter(pos);
     const tokensOnTile=byTile[posIdx];
     const total=tokensOnTile.length;
     tokensOnTile.forEach((p,i)=>{
-      let cx=pos.x+CELL/2, cy=pos.y+CELL/2;
+      let cx=baseCx, cy=baseCy;
       if(total>1){
         const angle=(i*2*Math.PI)/total - Math.PI/2;
-        const radius=CELL*0.16;
-        cx+=Math.cos(angle)*radius; cy+=Math.sin(angle)*radius;
+        cx+=Math.cos(angle)*TOKEN_R*1.4; cy+=Math.sin(angle)*TOKEN_R*1.4;
       }
-      // Nảy nhẹ khi đứng yên, mỗi đội lệch pha khác nhau cho tự nhiên
-      cy += Math.sin((ts||0)/450 + p.id*1.7) * CELL*0.035;
+      cy += Math.sin((ts||0)/450 + p.id*1.7) * 2.2; // bounce nhẹ
 
       ctx.save();
-      // Viền sáng (glow) cho đội đang tới lượt
       if(p.id===curId && p.status==="active"){
         const pulse = 0.55 + 0.45*Math.sin((ts||0)/260);
         ctx.beginPath();
         ctx.shadowColor = `rgba(255,183,3,${pulse.toFixed(2)})`;
-        ctx.shadowBlur = 16 + 8*pulse;
+        ctx.shadowBlur = 14 + 7*pulse;
         ctx.strokeStyle = `rgba(255,183,3,${(0.55+0.35*pulse).toFixed(2)})`;
-        ctx.lineWidth = 3;
-        ctx.arc(cx,cy, CELL*0.16, 0, Math.PI*2);
+        ctx.lineWidth = 2.5;
+        ctx.arc(cx,cy, TOKEN_R+3, 0, Math.PI*2);
         ctx.stroke();
         ctx.shadowBlur = 0;
       }
       ctx.shadowColor="rgba(0,0,0,.4)"; ctx.shadowBlur=4; ctx.shadowOffsetY=2;
       ctx.beginPath(); ctx.fillStyle=p.color;
-      ctx.arc(cx,cy,CELL*0.11,0,Math.PI*2); ctx.fill();
+      ctx.arc(cx,cy,TOKEN_R,0,Math.PI*2); ctx.fill();
       ctx.shadowBlur=0; ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
       ctx.restore();
     });
@@ -863,7 +921,7 @@ function drawFloatTexts(ts){
     if(p>=1) return;
     const yOff = -42*p;
     ctx.globalAlpha = Math.max(0, 1-p);
-    ctx.font = `800 ${Math.max(14,CELL*0.22)}px 'Baloo 2', sans-serif`;
+    ctx.font = `800 18px 'Baloo 2', sans-serif`;
     ctx.fillStyle = f.color || "#ffd23f";
     ctx.lineJoin = "round";
     ctx.strokeStyle="rgba(0,0,0,.45)"; ctx.lineWidth=3.5;
@@ -874,8 +932,10 @@ function drawFloatTexts(ts){
   ctx.globalAlpha = 1;
 }
 function drawCenterLogo(){
-  const cx = canvas.width/2, cy = canvas.height/2;
-  const r = CELL*2.1; // bán kính vùng trang trí giữa bàn
+  // Vùng giữa bàn cờ: từ (CW,CW) đến (BOARD_W-CW, BOARD_W-CW)
+  const cx = BOARD_W/2, cy = BOARD_W/2;
+  const innerW = BOARD_W - 2*CW; // 576px
+  const r = innerW * 0.28;
 
   ctx.save();
   // Hình thoi mảnh trang trí kiểu la bàn cổ điển, mờ nhẹ
