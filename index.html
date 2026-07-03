@@ -709,7 +709,23 @@ function grd(x,y,h,c1,c2){
   const g=ctx.createLinearGradient(x,y,x,y+h);
   g.addColorStop(0,c1); g.addColorStop(1,c2); return g;
 }
-// Tự co giãn cỡ chữ để tên ô (tiếng Việt có dấu) không bao giờ tràn sang ô bên cạnh
+// Tách tên ô thành 1 hoặc 2 dòng để tránh font quá bé — thử split ở dấu cách
+function wrapText(text, maxW, weight, size, family){
+  ctx.font = `${weight} ${size}px '${family}', sans-serif`;
+  if(ctx.measureText(text).width <= maxW) return [text];
+  const words = text.split(' ');
+  if(words.length < 2) return [text];
+  // Tìm điểm cắt tốt nhất: cả 2 dòng đều vừa maxW
+  for(let i=1; i<words.length; i++){
+    const l1 = words.slice(0,i).join(' ');
+    const l2 = words.slice(i).join(' ');
+    if(ctx.measureText(l1).width<=maxW && ctx.measureText(l2).width<=maxW) return [l1,l2];
+  }
+  // Không tìm được điểm cắt hoàn hảo → cắt đôi gần giữa
+  const mid = Math.ceil(words.length/2);
+  return [words.slice(0,mid).join(' '), words.slice(mid).join(' ')];
+}
+// Tự co cỡ chữ nếu cần (fallback khi wrap vẫn không đủ)
 function fitFont(text, maxWidth, weight, baseSize, family){
   let size = baseSize;
   ctx.font = `${weight} ${size}px '${family}', sans-serif`;
@@ -721,122 +737,173 @@ function fitFont(text, maxWidth, weight, baseSize, family){
 }
 function drawTile(tile, idx, pos, ts){
   const {x, y, w, h, side} = pos;
-  const pad = 1.5;
-  const tx = x+pad, ty = y+pad, tw = w-pad*2, th = h-pad*2;
+  // Không padding — ô nằm sát nhau
+  const tx=x, ty=y, tw=w, th=h;
   ctx.save();
 
-  // Rung nhẹ khi vừa đáp vào ô tốn tiền/vào tù
+  // Rung nhẹ khi vừa đáp ô tốn tiền/tù
   const shakeFx = tileFx.find(f=>f.idx===idx && f.type==='shake');
   if(shakeFx){
-    const prog = (ts - shakeFx.start)/shakeFx.duration;
-    ctx.translate(Math.sin(prog*38)*3.5*Math.max(0,1-prog), 0);
+    const prog=(ts-shakeFx.start)/shakeFx.duration;
+    ctx.translate(Math.sin(prog*38)*3*Math.max(0,1-prog), 0);
   }
 
-  // ── Nền trắng ──
-  roundRect(tx, ty, tw, th, 5);
-  ctx.fillStyle = "#ffffff"; ctx.fill();
-  ctx.strokeStyle = "rgba(0,0,0,0.18)"; ctx.lineWidth = 1; ctx.stroke();
+  // ── Nền trắng, viền đen sắc nét ──
+  ctx.fillStyle="#ffffff"; ctx.fillRect(tx,ty,tw,th);
+  ctx.strokeStyle="#000"; ctx.lineWidth=0.8; ctx.strokeRect(tx,ty,tw,th);
 
-  // ── Thanh màu loại đất (chỉ cho ô property) ở cạnh NGOÀI viền bàn ──
   const isCorner = side.startsWith('corner');
-  if(tile.type==="property" && !isCorner){
-    const bandColor = LAND_COLOR_SOLID[tile.landType] || "#ccc";
-    ctx.fillStyle = bandColor;
-    ctx.strokeStyle = "rgba(0,0,0,0.12)"; ctx.lineWidth=0.8;
-    if(side==='top'){
-      roundRect(tx, ty, tw, BAND, 5);
-    } else if(side==='bottom'){
-      roundRect(tx, ty+th-BAND, tw, BAND, 5);
-    } else if(side==='right'){
-      roundRect(tx+tw-BAND, ty, BAND, th, 5);
-    } else if(side==='left'){
-      roundRect(tx, ty, BAND, th, 5);
-    }
-    ctx.fill(); ctx.stroke();
-  }
-
-  // ── Viền chủ sở hữu: đường viền màu đội chủ, thay glow bằng đường viền rõ ──
   const owner = tile.type==="property" ? state.tiles[idx].owner : null;
-  if(owner !== null){
-    const ownerColor = state.players[owner].color;
-    roundRect(tx, ty, tw, th, 5);
-    ctx.strokeStyle = ownerColor;
-    ctx.lineWidth = 3.5;
+
+  // ── Thanh màu loại đất (property, không phải góc) ──
+  if(tile.type==="property" && !isCorner){
+    const bc = LAND_COLOR_SOLID[tile.landType]||"#ccc";
+    ctx.fillStyle=bc;
+    if(side==='top')    ctx.fillRect(tx,ty,tw,BAND);
+    if(side==='bottom') ctx.fillRect(tx,ty+th-BAND,tw,BAND);
+    if(side==='right')  ctx.fillRect(tx+tw-BAND,ty,BAND,th);
+    if(side==='left')   ctx.fillRect(tx,ty,BAND,th);
+    // Đường kẻ phân cách thanh màu với vùng trắng
+    ctx.strokeStyle="rgba(0,0,0,0.2)"; ctx.lineWidth=0.6;
+    ctx.beginPath();
+    if(side==='top')    { ctx.moveTo(tx,ty+BAND);    ctx.lineTo(tx+tw,ty+BAND); }
+    if(side==='bottom') { ctx.moveTo(tx,ty+th-BAND); ctx.lineTo(tx+tw,ty+th-BAND); }
+    if(side==='right')  { ctx.moveTo(tx+tw-BAND,ty); ctx.lineTo(tx+tw-BAND,ty+th); }
+    if(side==='left')   { ctx.moveTo(tx+BAND,ty);    ctx.lineTo(tx+BAND,ty+th); }
     ctx.stroke();
   }
 
-  // ── Nội dung bên trong ô ──
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  // ── Viền chủ sở hữu: đường viền màu đội 2.5px bên trong ──
+  if(owner!==null){
+    ctx.strokeStyle=state.players[owner].color;
+    ctx.lineWidth=2.5;
+    ctx.strokeRect(tx+1.5,ty+1.5,tw-3,th-3);
+  }
+
+  // ── Nội dung ──
+  ctx.textAlign="center"; ctx.textBaseline="middle";
 
   if(isCorner){
-    // Ô góc: vẽ icon to + tên
-    const cxc = tx+tw/2, cyc = ty+th/2;
-    ctx.font = `${Math.max(20, th*0.38)}px serif`;
-    let icon = "•";
-    if(tile.type==="jail")  icon="🚔";
-    if(tile.type==="tax")   icon="💸";
-    if(tile.type==="start") icon="🚩";
-    if(tile.type==="state") icon="⚡";
-    if(tile.type==="property") icon = LAND_ICON[tile.landType]||"•";
-    ctx.fillText(icon, cxc, cyc - th*0.12);
-    fitFont(tile.name, tw*0.88, 700, Math.max(8, th*0.13), "Nunito");
-    ctx.fillStyle="#2d2150";
-    ctx.fillText(tile.name, cxc, cyc + th*0.28);
+    const cxc=tx+tw/2, cyc=ty+th/2;
+    if(tile.type==="property"){
+      // Ô góc property (vd: Chăn nuôi gà): thanh màu + tên + giá — KHÔNG icon
+      ctx.fillStyle=LAND_COLOR_SOLID[tile.landType]||"#ccc";
+      ctx.fillRect(tx,ty,tw,BAND);
+      const displayRent=tile.rent*(state.tiles[idx].rentMultiplier||1);
+      const BASE=Math.max(9,th*0.11);
+      const lines=wrapText(tile.name, tw*0.88, 700, BASE, "Nunito");
+      const nSz=fitFont(lines[0], tw*0.88, 700, BASE, "Nunito");
+      ctx.fillStyle="#2d2150";
+      if(lines.length===1){
+        ctx.fillText(tile.name, cxc, cyc-nSz*0.7);
+      } else {
+        ctx.fillText(lines[0], cxc, cyc-nSz*1.2);
+        ctx.fillText(lines[1], cxc, cyc-nSz*0.1);
+      }
+      fitFont(`${tile.price}$  MB:${displayRent}$`, tw*0.85, 600, Math.max(7.5,nSz*0.82), "Nunito");
+      ctx.fillStyle="#555";
+      ctx.fillText(`${tile.price}$  MB:${displayRent}$`, cxc, cyc+nSz*1.1);
+    } else {
+      // Ô góc đặc biệt: Tù / Xuất phát
+      const iconMap={jail:"🚔",tax:"💸",start:"🚩",state:"⚡"};
+      const icon=iconMap[tile.type]||"•";
+      ctx.font=`${Math.max(22,th*0.35)}px serif`;
+      ctx.fillText(icon, cxc, cyc-th*0.12);
+      fitFont(tile.name, tw*0.88, 700, Math.max(9,th*0.12), "Nunito");
+      ctx.fillStyle="#2d2150";
+      ctx.fillText(tile.name, cxc, cyc+th*0.3);
+    }
   } else {
-    // Ô cạnh: tên + giá, hướng văn bản theo vị trí
-    // Tính vùng nội dung (loại bỏ thanh màu + padding)
-    let contentX = tx, contentY = ty, contentW = tw, contentH = th;
-    if(side==='top')    { contentY = ty+BAND; contentH = th-BAND; }
-    if(side==='bottom') { contentH = th-BAND; }
-    if(side==='right')  { contentW = tw-BAND; }
-    if(side==='left')   { contentX = tx+BAND; contentW = tw-BAND; }
-    const cxc = contentX+contentW/2, cyc = contentY+contentH/2;
+    // ── Ô cạnh ──
+    // Vùng nội dung (loại trừ thanh màu)
+    let cX=tx, cY=ty, cW=tw, cH=th;
+    if(side==='top')    { cY=ty+BAND; cH=th-BAND; }
+    if(side==='bottom') { cH=th-BAND; }
+    if(side==='right')  { cW=tw-BAND; }
+    if(side==='left')   { cX=tx+BAND; cW=tw-BAND; }
+    const cxc=cX+cW/2, cyc=cY+cH/2;
 
-    // Xoay context cho ô trái/phải để text đọc hướng vào tâm bàn
-    ctx.translate(cxc, cyc);
-    if(side==='right') ctx.rotate(Math.PI/2);
-    if(side==='left')  ctx.rotate(-Math.PI/2);
-    ctx.translate(-cxc, -cyc);
-
-    // Tên ô: luôn ở giữa vùng nội dung
-    const maxNameW = (side==='left'||side==='right') ? contentH*0.88 : contentW*0.88;
-    const maxNameH = (side==='left'||side==='right') ? contentW*0.88 : contentH*0.88;
-    const nameSize = fitFont(tile.name, maxNameW, 700, Math.max(7.5, Math.min(contentW,contentH)*0.16), "Nunito");
-    ctx.fillStyle = "#2d2150";
+    // Xoay text cho ô top/bottom để dùng chiều DÀI (92px) thay vì chiều ngắn (64px)
+    // → text rộng hơn nhiều, đọc dễ hơn
+    if(side==='top'||side==='bottom'){
+      ctx.translate(cxc,cyc);
+      ctx.rotate(side==='top' ? Math.PI/2 : -Math.PI/2);
+      ctx.translate(-cxc,-cyc);
+    }
+    // Sau khi xoay: chiều ngang available = cH (92-14=78px) cho top/bottom
+    //               chiều ngang available = cW (92-14=78px) cho left/right (không xoay)
+    const maxW = (side==='top'||side==='bottom') ? cH*0.9 : cW*0.9;
+    const BASE  = Math.max(9, Math.min(cW,cH)*0.16);
 
     if(tile.type==="property"){
-      // Property: tên + giá/thuê
-      const displayRent = tile.rent*(state.tiles[idx].rentMultiplier||1);
-      const priceStr = `${tile.price}$`;
-      const rentStr  = `MB: ${displayRent}$`;
-      const lineGap  = nameSize*1.25;
-      ctx.fillText(tile.name, cxc, cyc - lineGap*0.55);
-      fitFont(priceStr, maxNameW*0.85, 600, Math.max(6.5, nameSize*0.82), "Nunito");
+      const displayRent=tile.rent*(state.tiles[idx].rentMultiplier||1);
+      const lines=wrapText(tile.name, maxW, 700, BASE, "Nunito");
+      const nSz=fitFont(lines[0], maxW, 700, BASE, "Nunito");
+      const gap=nSz*1.3;
+      ctx.fillStyle="#2d2150";
+      if(lines.length===1){
+        ctx.fillText(tile.name, cxc, cyc-gap*0.45);
+      } else {
+        ctx.fillText(lines[0], cxc, cyc-gap*0.9);
+        ctx.fillText(lines[1], cxc, cyc-gap*0.1);
+      }
+      const priceSz=fitFont(`${tile.price}$  MB:${displayRent}$`, maxW*0.9, 600, Math.max(7,nSz*0.82), "Nunito");
       ctx.fillStyle="#555";
-      ctx.fillText(priceStr+" / "+rentStr, cxc, cyc + lineGap*0.55);
+      ctx.fillText(`${tile.price}$  MB:${displayRent}$`, cxc, cyc+gap*(lines.length===1?0.6:1.05));
     } else if(tile.type==="tax"){
-      ctx.fillStyle="#d63333"; ctx.font=`700 ${nameSize}px 'Nunito',sans-serif`;
-      ctx.fillText(tile.name, cxc, cyc-nameSize*0.55);
-      fitFont("-100$", maxNameW*0.85, 800, nameSize*0.85, "Nunito");
-      ctx.fillText("-100$", cxc, cyc+nameSize*0.55);
+      const lines=wrapText(tile.name, maxW, 700, BASE, "Nunito");
+      const nSz=fitFont(lines[0], maxW, 700, BASE, "Nunito");
+      ctx.fillStyle="#d63333";
+      if(lines.length===1){
+        ctx.fillText(tile.name, cxc, cyc-nSz*0.65);
+      } else {
+        ctx.fillText(lines[0], cxc, cyc-nSz*1.1);
+        ctx.fillText(lines[1], cxc, cyc-nSz*0.1);
+      }
+      fitFont("-100$", maxW*0.85, 800, nSz*0.9, "Nunito");
+      ctx.fillText("-100$", cxc, cyc+nSz*0.75);
     } else if(tile.type==="state"){
-      ctx.fillStyle="#1e93a3"; ctx.font=`700 ${nameSize}px 'Nunito',sans-serif`;
-      ctx.fillText(tile.name, cxc, cyc-nameSize*0.55);
-      fitFont("-100$", maxNameW*0.85, 800, nameSize*0.85, "Nunito");
-      ctx.fillStyle="#555"; ctx.fillText("-100$", cxc, cyc+nameSize*0.55);
+      const lines=wrapText(tile.name, maxW, 700, BASE, "Nunito");
+      const nSz=fitFont(lines[0], maxW, 700, BASE, "Nunito");
+      ctx.fillStyle="#1e93a3";
+      if(lines.length===1){
+        ctx.fillText(tile.name, cxc, cyc-nSz*0.65);
+      } else {
+        ctx.fillText(lines[0], cxc, cyc-nSz*1.1);
+        ctx.fillText(lines[1], cxc, cyc-nSz*0.1);
+      }
+      fitFont("-100$", maxW*0.85, 800, nSz*0.9, "Nunito");
+      ctx.fillStyle="#555"; ctx.fillText("-100$", cxc, cyc+nSz*0.75);
     } else {
-      ctx.fillText(tile.name, cxc, cyc);
+      const nSz=fitFont(tile.name, maxW, 700, BASE, "Nunito");
+      ctx.fillStyle="#2d2150"; ctx.fillText(tile.name, cxc, cyc);
     }
+  }
+
+  // ── Marker chủ sở hữu: chấm tròn màu đội ở góc trong của ô (sau này thay bằng PNG) ──
+  if(owner!==null){
+    const MR=7;
+    let mx,my;
+    // Đặt ở góc hướng vào tâm bàn (ngược chiều thanh màu)
+    if(side==='top')         { mx=tx+tw-MR-3; my=ty+th-MR-3; }
+    else if(side==='bottom') { mx=tx+MR+3;    my=ty+MR+3; }
+    else if(side==='right')  { mx=tx+MR+3;    my=ty+MR+3; }
+    else if(side==='left')   { mx=tx+tw-MR-3; my=ty+MR+3; }
+    else                     { mx=tx+tw-MR-3; my=ty+MR+3; } // corner
+    ctx.save();
+    ctx.beginPath(); ctx.arc(mx,my,MR,0,Math.PI*2);
+    ctx.fillStyle=state.players[owner].color; ctx.fill();
+    ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.restore();
   }
 
   // ── Sáng lóe ô Xuất phát ──
   if(tile.type==='start'){
-    const pulseFx = tileFx.find(f=>f.idx===idx && f.type==='pulse');
+    const pulseFx=tileFx.find(f=>f.idx===idx&&f.type==='pulse');
     if(pulseFx){
       const pp=(ts-pulseFx.start)/pulseFx.duration;
       if(pp<1){
-        ctx.save();
-        ctx.globalAlpha=Math.max(0,(1-pp)*0.8);
+        ctx.save(); ctx.globalAlpha=Math.max(0,(1-pp)*0.8);
         ctx.strokeStyle="#ffe066"; ctx.lineWidth=4;
         ctx.beginPath(); ctx.arc(tx+tw/2,ty+th/2,(Math.min(tw,th)/2)*(0.4+pp),0,Math.PI*2); ctx.stroke();
         ctx.restore();
@@ -845,12 +912,12 @@ function drawTile(tile, idx, pos, ts){
   }
 
   // ── Flash mua đất ──
-  const flashFx = tileFx.find(f=>f.idx===idx && f.type==='flash');
+  const flashFx=tileFx.find(f=>f.idx===idx&&f.type==='flash');
   if(flashFx){
     const pp=(ts-flashFx.start)/flashFx.duration;
     if(pp<1){
       ctx.save(); ctx.globalAlpha=Math.max(0,(1-pp)*0.5);
-      roundRect(tx,ty,tw,th,5); ctx.fillStyle="#fff7cc"; ctx.fill();
+      ctx.fillStyle="#fff7cc"; ctx.fillRect(tx,ty,tw,th);
       ctx.restore();
     }
   }
