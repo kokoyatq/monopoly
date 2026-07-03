@@ -800,9 +800,11 @@ function drawTile(tile, idx, pos, ts){
         ctx.fillText(lines[0], cxc, cyc-nSz*1.2);
         ctx.fillText(lines[1], cxc, cyc-nSz*0.1);
       }
-      fitFont(`Mua:${tile.price}$  MB:${displayRent}$`, tw*0.85, 700, Math.max(9,nSz*1.1), "Nunito");
-      ctx.fillStyle="#555";
-      ctx.fillText(`Mua:${tile.price}$  MB:${displayRent}$`, cxc, cyc+nSz*1.1);
+      const pSz = fitFont(`Mua:${tile.price}$`, tw*0.85, 700, nSz, "Nunito");
+      ctx.fillStyle="#c0392b";
+      ctx.fillText(`Mua:${tile.price}$`, cxc, cyc+nSz*0.95);
+      fitFont(`MB:${displayRent}$`, tw*0.85, 700, pSz, "Nunito");
+      ctx.fillText(`MB:${displayRent}$`, cxc, cyc+nSz*0.95+pSz*1.3);
     } else {
       // Ô góc đặc biệt: Tù / Xuất phát
       const iconMap={jail:"🚔",tax:"💸",start:"🚩",state:"⚡"};
@@ -847,9 +849,12 @@ function drawTile(tile, idx, pos, ts){
         ctx.fillText(lines[0], cxc, cyc-gap*0.9);
         ctx.fillText(lines[1], cxc, cyc-gap*0.1);
       }
-      const priceSz=fitFont(`Mua:${tile.price}$  MB:${displayRent}$`, maxW*0.9, 700, Math.max(8.5,nSz*1.1), "Nunito");
-      ctx.fillStyle="#555";
-      ctx.fillText(`Mua:${tile.price}$  MB:${displayRent}$`, cxc, cyc+gap*(lines.length===1?0.6:1.05));
+      const priceSz = fitFont(`Mua:${tile.price}$`, maxW*0.9, 700, nSz, "Nunito");
+      ctx.fillStyle="#c0392b";
+      const priceY = cyc + gap*(lines.length===1 ? 0.55 : 1.0);
+      ctx.fillText(`Mua:${tile.price}$`, cxc, priceY);
+      fitFont(`MB:${displayRent}$`, maxW*0.9, 700, priceSz, "Nunito");
+      ctx.fillText(`MB:${displayRent}$`, cxc, priceY + priceSz*1.3);
     } else if(tile.type==="tax"){
       const lines=wrapText(tile.name, maxW, 700, BASE, "Nunito");
       const nSz=fitFont(lines[0], maxW, 700, BASE, "Nunito");
