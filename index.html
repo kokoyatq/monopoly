@@ -849,7 +849,7 @@ function drawTile(tile, idx, pos, ts){
         ctx.fillText(lines[0], cxc, cyc-gap*0.9);
         ctx.fillText(lines[1], cxc, cyc-gap*0.1);
       }
-      const priceSz = fitFont(`Mua:${tile.price}$`, maxW*0.9, 700, nSz, "Nunito");
+      const priceSz = fitFont(`Mua:${tile.price}$`, maxW*0.9, 700, nSz*0.82, "Nunito");
       ctx.fillStyle="#c0392b";
       const priceY = cyc + gap*(lines.length===1 ? 0.55 : 1.0);
       ctx.fillText(`Mua:${tile.price}$`, cxc, priceY);
@@ -878,7 +878,7 @@ function drawTile(tile, idx, pos, ts){
         ctx.fillText(lines[1], cxc, cyc-nSz*0.1);
       }
       fitFont("-100$", maxW*0.85, 800, nSz*0.9, "Nunito");
-      ctx.fillStyle="#555"; ctx.fillText("-100$", cxc, cyc+nSz*0.75);
+      ctx.fillStyle="#c0392b"; ctx.fillText("-100$", cxc, cyc+nSz*0.75);
     } else {
       const nSz=fitFont(tile.name, maxW, 700, BASE, "Nunito");
       ctx.fillStyle="#2d2150"; ctx.fillText(tile.name, cxc, cyc);
