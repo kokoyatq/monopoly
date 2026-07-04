@@ -1238,30 +1238,34 @@ function drawCenterLogo(){
   if(curPlayer){
     ctx.save();
     const tImg = tokenImgs[curPlayer.id];
-    const tSize = r * 0.22;
+    const tSize = r * 0.18; // Icon nhỏ lại một chút để cân đối
     
-    // ĐƯA TẤT CẢ VỀ TÂM CX (Bỏ hết r*0.18 và r*0.32 cũ)
-    const posX = cx; 
-    const posY = cy - r * 0.15; // Hạ thấp icon xuống để không đè lên dòng NHÓM
-
-    ctx.globalAlpha = 1;
+    // Tọa độ Y chung cho cả hàng (Icon + Tên)
+    const posY = cy - r * 0.05; 
+    
+    // 1. Vẽ Icon Token (nằm bên trái tâm cx một chút)
+    const iconX = cx - r * 0.12; 
     if (tImg && tImg.ready) {
-      ctx.drawImage(tImg.img, posX - tSize/2, posY - tSize/2, tSize, tSize);
+      ctx.drawImage(tImg.img, iconX - tSize/2, posY - tSize/2, tSize, tSize);
     } else {
       ctx.beginPath();
-      ctx.arc(posX, posY, tSize/2.2, 0, Math.PI*2);
+      ctx.arc(iconX, posY, tSize/2.2, 0, Math.PI*2);
       ctx.fillStyle = curPlayer.color;
       ctx.fill();
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
     }
 
-    ctx.fillStyle = "#2d2150";
-    ctx.font = `700 ${Math.max(13, r*0.155)}px 'Baloo 2', sans-serif`;
-    ctx.fillText("LƯỢT CỦA", cx, cy + r * 0.05); // Hạ thấp chữ xuống dưới icon
-    
+    // 2. Tên người chơi (nằm bên phải icon, cùng dòng với icon)
+    ctx.textAlign = "left"; // Căn lề trái để tên chạy từ icon ra ngoài
     ctx.font = `800 ${Math.max(16, r*0.20)}px 'Baloo 2', sans-serif`;
     ctx.fillStyle = curPlayer.color;
-    ctx.fillText(curPlayer.name, cx, cy + r * 0.25); // Tên nằm dưới chữ LƯỢT CỦA
+    ctx.fillText(curPlayer.name, iconX + tSize/1.2, posY + (tSize/4)); 
+
+    // 3. Chữ "LƯỢT CỦA" (nằm phía trên hàng Icon/Tên)
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#2d2150";
+    ctx.font = `700 ${Math.max(13, r*0.155)}px 'Baloo 2', sans-serif`;
+    ctx.fillText("LƯỢT CỦA", cx, posY - r * 0.12);
+    
     ctx.restore();
   }
   // ── Countdown ──
