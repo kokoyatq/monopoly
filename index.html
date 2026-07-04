@@ -1204,30 +1204,32 @@ function drawCenterLogo(){
   const r = innerW * 0.28;
   const now = Date.now();
 
-  // ── Trung tâm bàn cờ: Dọn dẹp & Hiển thị thông tin ──
   ctx.save();
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-
-  // --- CHỈ SỬA 2 DÒNG NÀY ĐỂ ĐẨY LÊN ---
-  // Muốn cao hơn nữa thì tăng số 200 và 160 lên
-  ctx.globalAlpha = 0.6;
-  ctx.fillStyle = "#5c4324";
-  ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - 200); 
-
-  ctx.fillStyle = "#2d2150";
-  ctx.font = `700 ${Math.max(12, r*0.12)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("NHÓM: Đang cập nhật", cx, cy - 160);
+  // Trang trí la bàn mờ nhẹ
+  ctx.translate(cx, cy);
+  ctx.globalAlpha = 0.08;
+  ctx.strokeStyle = "#5c4324"; ctx.lineWidth = 2;
+  for(let i=0;i<4;i++){
+    ctx.save(); ctx.rotate((Math.PI/2)*i + Math.PI/4);
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(r*1.55,0); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.beginPath(); ctx.arc(0,0,r*0.62,0,Math.PI*2); ctx.stroke();
   ctx.restore();
 
-  // --- PHẦN DƯỚI GIỮ NGUYÊN 100% NHƯ CŨ ---
+  ctx.save();
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+
+  // Tên game nhỏ phía trên
+  ctx.globalAlpha = 0.45;
+  ctx.fillStyle = "#5c4324";
+  ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
+  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*0.72);
+
   if(!state || !state.turnOrderLocked || state.gameEnded){
-    ctx.save();
+    // Chưa bắt đầu — chỉ hiện logo
     ctx.globalAlpha = 0.45;
     ctx.font = `${r*0.38}px serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
     ctx.fillText("🏛️", cx, cy);
     ctx.restore();
     return;
@@ -1238,67 +1240,34 @@ function drawCenterLogo(){
 
   // ── Lượt của ai ──
   if(curPlayer){
-    ctx.save();
+   // ── In ảnh Token của người chơi thay cho chấm tròn ──
     const tImg = tokenImgs[curPlayer.id];
-    const tSize = r * 0.18; 
-    const posY = cy - r * 0.05; 
-    const iconX = cx - r * 0.12; 
+    const tSize = r * 0.22; // Điều chỉnh số 0.22 nếu muốn icon to/nhỏ hơn
+    const posX = cx - r * 0.18;
+    const posY = cy - r * 0.32;
+
+    ctx.globalAlpha = 1;
     if (tImg && tImg.ready) {
-      ctx.drawImage(tImg.img, iconX - tSize/2, posY - tSize/2, tSize, tSize);
+      // Vẽ ảnh Token nếu đã load xong
+      ctx.drawImage(tImg.img, posX - tSize/2, posY - tSize/2, tSize, tSize);
     } else {
+      // Fallback: Nếu chưa load được ảnh thì vẽ chấm tròn màu cũ
       ctx.beginPath();
-      ctx.arc(iconX, posY, tSize/2.2, 0, Math.PI*2);
+      ctx.arc(posX, posY, tSize/2.2, 0, Math.PI*2);
       ctx.fillStyle = curPlayer.color;
       ctx.fill();
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
     }
-    ctx.textAlign = "left";
-    ctx.font = `800 ${Math.max(16, r*0.20)}px 'Baloo 2', sans-serif`;
-    ctx.fillStyle = curPlayer.color;
-    ctx.fillText(curPlayer.name, iconX + tSize/1.2, posY + (tSize/4)); 
-    ctx.textAlign = "center";
+
+    ctx.globalAlpha = 1;
     ctx.fillStyle = "#2d2150";
     ctx.font = `700 ${Math.max(13, r*0.155)}px 'Baloo 2', sans-serif`;
-    ctx.fillText("LƯỢT CỦA", cx, posY - r * 0.12);
-    ctx.restore();
+    ctx.fillText("LƯỢT CỦA", cx, cy - r*0.50);
+    ctx.font = `800 ${Math.max(16, r*0.20)}px 'Baloo 2', sans-serif`;
+    ctx.fillStyle = curPlayer.color;
+    ctx.fillText(curPlayer.name, cx, cy - r*0.28);
   }
 
-  // ── Countdown ──
-  const hasBuy  = state.pendingBuyTile !== null && state.pendingBuyExpireAt;
-  const hasRoll = !hasBuy && state.turnStartedAt;
-
-  if(hasBuy || hasRoll){
-    const total  = hasBuy ? BUY_TIMEOUT : ROLL_TIMEOUT;
-    const expire = hasBuy ? state.pendingBuyExpireAt : (state.turnStartedAt + ROLL_TIMEOUT);
-    const remain = Math.max(0, expire - now);
-    const pct    = remain / total;
-    const secs   = Math.ceil(remain / 1000);
-    const label  = hasBuy ? "⏱ Mua đất" : "⏱ Roll";
-    const color  = hasBuy ? "#7b3ff2" : "#e11d48";
-    const barR   = r * 0.55;
-    const barY   = cy + r * 0.10;
-    const barH   = r * 0.10;
-
-    ctx.globalAlpha = 0.9;
-    ctx.fillStyle = color;
-    ctx.font = `700 ${Math.max(11, r*0.115)}px 'Nunito', sans-serif`;
-    ctx.fillText(label, cx, barY - barH - r*0.10);
-    ctx.globalAlpha = 0.18;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.roundRect(cx - barR, barY, barR*2, barH, barH/2);
-    ctx.fill();
-    ctx.globalAlpha = 0.88;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.roundRect(cx - barR, barY, barR*2*pct, barH, barH/2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = color;
-    ctx.font = `800 ${Math.max(20, r*0.28)}px 'Baloo 2', sans-serif`;
-    ctx.fillText(`${secs}s`, cx, barY + barH + r*0.26);
-  }
-  ctx.restore();
-}
   // ── Countdown ──
   const hasBuy  = state.pendingBuyTile !== null && state.pendingBuyExpireAt;
   const hasRoll = !hasBuy && state.turnStartedAt;
