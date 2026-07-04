@@ -1209,18 +1209,16 @@ function drawCenterLogo(){
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
- // 1. Tên game (Giảm giá trị Y để đẩy lên trên)
+ // 1. Tên game (Đẩy lên cao nhất)
   ctx.globalAlpha = 0.6;
   ctx.fillStyle = "#5c4324";
   ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
-  // Số 60 càng lớn (ví dụ 80, 100) thì chữ càng bay lên cao
-  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - 60); 
+  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*0.75); // Cao hơn nữa
 
   // 2. Dòng NHÓM
   ctx.fillStyle = "#2d2150";
   ctx.font = `700 ${Math.max(12, r*0.12)}px 'Baloo 2', sans-serif`;
-  // Số 30 là khoảng cách so với tâm cy, tăng lên (ví dụ 40, 50) thì nó lên cao
-  ctx.fillText("NHÓM: Đang cập nhật", cx, cy - 30);
+  ctx.fillText("NHÓM: Đang cập nhật", cx, cy - r*0.58); // Đẩy lên theo
 
   ctx.restore();
 
