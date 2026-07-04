@@ -1204,14 +1204,12 @@ function drawCenterLogo(){
   const r = innerW * 0.28;
   const now = Date.now();
 
- // ── Trung tâm bàn cờ: Dọn dẹp & Hiển thị thông tin ──
+// ── Trung tâm bàn cờ: Dọn dẹp & Hiển thị thông tin ──
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-// Thay vì nhân với r (tỉ lệ), mình trừ thẳng vào cy (tâm)
-  // Số 120 và 90 là khoảng cách pixel tính từ tâm bàn cờ lên trên
-  // Số càng lớn (ví dụ 150, 180) thì chữ càng bay lên sát mép trên
+  // 1. Tiêu đề (Đẩy lên cao bằng pixel, chỉnh số 150/110 để thay đổi độ cao)
   ctx.globalAlpha = 0.6;
   ctx.fillStyle = "#5c4324";
   ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
@@ -1220,13 +1218,14 @@ function drawCenterLogo(){
   ctx.fillStyle = "#2d2150";
   ctx.font = `700 ${Math.max(12, r*0.12)}px 'Baloo 2', sans-serif`;
   ctx.fillText("NHÓM: Đang cập nhật", cx, cy - 110);
-
   ctx.restore();
 
   if(!state || !state.turnOrderLocked || state.gameEnded){
-    // Chưa bắt đầu — chỉ hiện logo
+    ctx.save();
     ctx.globalAlpha = 0.45;
     ctx.font = `${r*0.38}px serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
     ctx.fillText("🏛️", cx, cy);
     ctx.restore();
     return;
@@ -1237,18 +1236,18 @@ function drawCenterLogo(){
 
   // ── Lượt của ai ──
   if(curPlayer){
-   // ── In ảnh Token của người chơi thay cho chấm tròn ──
+    ctx.save();
     const tImg = tokenImgs[curPlayer.id];
-    const tSize = r * 0.22; // Điều chỉnh số 0.22 nếu muốn icon to/nhỏ hơn
-    const posX = cx - r * 0.18;
-    const posY = cy - r * 0.32;
+    const tSize = r * 0.22;
+    
+    // ĐƯA TẤT CẢ VỀ TÂM CX (Bỏ hết r*0.18 và r*0.32 cũ)
+    const posX = cx; 
+    const posY = cy - r * 0.15; // Hạ thấp icon xuống để không đè lên dòng NHÓM
 
     ctx.globalAlpha = 1;
     if (tImg && tImg.ready) {
-      // Vẽ ảnh Token nếu đã load xong
       ctx.drawImage(tImg.img, posX - tSize/2, posY - tSize/2, tSize, tSize);
     } else {
-      // Fallback: Nếu chưa load được ảnh thì vẽ chấm tròn màu cũ
       ctx.beginPath();
       ctx.arc(posX, posY, tSize/2.2, 0, Math.PI*2);
       ctx.fillStyle = curPlayer.color;
@@ -1256,15 +1255,15 @@ function drawCenterLogo(){
       ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
     }
 
-    ctx.globalAlpha = 1;
     ctx.fillStyle = "#2d2150";
     ctx.font = `700 ${Math.max(13, r*0.155)}px 'Baloo 2', sans-serif`;
-    ctx.fillText("LƯỢT CỦA", cx, cy - r*0.50);
+    ctx.fillText("LƯỢT CỦA", cx, cy + r * 0.05); // Hạ thấp chữ xuống dưới icon
+    
     ctx.font = `800 ${Math.max(16, r*0.20)}px 'Baloo 2', sans-serif`;
     ctx.fillStyle = curPlayer.color;
-    ctx.fillText(curPlayer.name, cx, cy - r*0.28);
+    ctx.fillText(curPlayer.name, cx, cy + r * 0.25); // Tên nằm dưới chữ LƯỢT CỦA
+    ctx.restore();
   }
-
   // ── Countdown ──
   const hasBuy  = state.pendingBuyTile !== null && state.pendingBuyExpireAt;
   const hasRoll = !hasBuy && state.turnStartedAt;
