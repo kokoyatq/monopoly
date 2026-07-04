@@ -44,7 +44,7 @@
     background:var(--panel); color:var(--panel-text);
     padding:14px 16px; border-radius:18px; font-size:13px; font-weight:700;
     box-shadow:0 6px 0 rgba(0,0,0,.15), 0 10px 18px rgba(0,0,0,.25);
-    display:flex; flex-direction:column; gap:8px;
+    display:flex; flex-direction:column; align-items:center; text-align:center; gap:8px;
   }
   #phaseBar b{color:#7b3ff2; font-family:'Baloo 2',sans-serif;}
   #phaseBar .timer-big{font-size:28px; font-family:'Baloo 2',sans-serif; color:#7b3ff2; text-align:center; letter-spacing:2px;}
@@ -59,7 +59,7 @@
   #currentTurnName{font-size:15px; color:#2d2150; font-family:'Baloo 2',sans-serif;}
   #currentTurnDot{width:18px; height:18px; border-radius:50%; display:inline-block; margin-bottom:2px;}
   .legend-right{
-    background:var(--panel); padding:12px 16px; border-radius:18px; font-size:11.5px; font-weight:700;
+    background:var(--panel); color:var(--panel-text); padding:12px 16px; border-radius:18px; font-size:11.5px; font-weight:700;
     box-shadow:0 6px 0 rgba(0,0,0,.15), 0 10px 18px rgba(0,0,0,.25);
     display:flex; flex-direction:column; gap:8px;
   }
@@ -134,15 +134,6 @@
   }
   #eventBanner.show{display:block; opacity:1; transform:translate(-50%,-50%) scale(1);}
 
-  #phaseBar{
-    display:flex; align-items:center; gap:14px; background:var(--panel); color:var(--panel-text);
-    padding:10px 20px; border-radius:999px; font-size:14px; font-weight:700;
-    box-shadow:0 6px 0 rgba(0,0,0,.15), 0 10px 18px rgba(0,0,0,.25);
-  }
-  #phaseBar b{color:#7b3ff2; font-family:'Baloo 2',sans-serif;}
-  #phaseBar.suggest{animation:pulseBar 1.3s infinite;}
-  @keyframes pulseBar{0%{box-shadow:0 6px 0 rgba(0,0,0,.15),0 0 0 0 rgba(255,183,3,.7);}70%{box-shadow:0 6px 0 rgba(0,0,0,.15),0 0 0 14px rgba(255,183,3,0);}100%{box-shadow:0 6px 0 rgba(0,0,0,.15),0 0 0 0 rgba(255,183,3,0);}}
-
   #sidebar{
     width:360px; background:var(--panel); color:var(--panel-text);
     padding:16px; display:flex; flex-direction:column; gap:10px; overflow-y:auto;
@@ -212,6 +203,15 @@
       <span>Giai đoạn: <b id="phaseName">-</b></span>
       <span id="suggestText" style="color:#e0680b; display:none;">⏰ Chỉ MC mới chuyển giai đoạn được</span>
     </div>
+    <button id="btnRoll" class="btn-main">🎲🎲 Đổ xúc xắc</button>
+    <div id="rollCountdownWrap" style="display:none;">
+      <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:700; color:#fff; margin-bottom:3px;">
+        <span>⏱ Tự động mất lượt:</span><span id="rollCountdownNum" style="color:#ffd23f;">10s</span>
+      </div>
+      <div style="background:rgba(255,255,255,.35); border-radius:999px; height:5px; overflow:hidden;">
+        <div id="rollCountdownBar" style="height:100%; background:#e11d48; border-radius:999px; width:100%; transition:width .4s linear;"></div>
+      </div>
+    </div>
     <div id="currentTurnBox">
       <div class="turn-label">🎯 Lượt hiện tại</div>
       <div id="currentTurnDot"></div>
@@ -229,15 +229,6 @@
   <h2>🏛️ Từ Cạnh Tranh Đến Độc Quyền</h2>
   <div id="myTag">Connected: <b id="myTagName">Khán giả / Máy chiếu</b></div>
   <div id="diceResult">-</div>
-  <button id="btnRoll" class="btn-main">🎲🎲 Đổ xúc xắc</button>
-  <div id="rollCountdownWrap" style="display:none; margin-top:6px;">
-    <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:700; color:#888; margin-bottom:3px;">
-      <span>⏱ Tự động mất lượt:</span><span id="rollCountdownNum" style="color:#e11d48;">10s</span>
-    </div>
-    <div style="background:#fde8e8; border-radius:999px; height:5px; overflow:hidden;">
-      <div id="rollCountdownBar" style="height:100%; background:#e11d48; border-radius:999px; width:100%; transition:width .4s linear;"></div>
-    </div>
-  </div>
   <div id="players"></div>
   <div id="log"></div>
 </div>
@@ -351,6 +342,15 @@ const warnedWeak = new Set();
 let state = null;
 const canvas = document.getElementById("boardCanvas");
 const ctx = canvas.getContext("2d");
+
+/* ─── Ảnh "dấu chủ sở hữu" đóng giữa ô đất — dùng PNG nếu có, tự fallback về chấm tròn màu đội
+   nếu chưa có file. Khi có file thật, chỉ cần đặt đúng đường dẫn dưới đây, không cần sửa gì
+   thêm ở phần code vẽ marker trong drawTile(). */
+const ownerMarkImg = new Image();
+let ownerMarkImgReady = false;
+ownerMarkImg.onload  = ()=>{ ownerMarkImgReady = true; };
+ownerMarkImg.onerror = ()=>{ ownerMarkImgReady = false; };
+ownerMarkImg.src = "./assets/owner-mark.png";
 
 /* ─── Hiệu ứng đồ họa giữa bàn (rung ô / sáng lóe Xuất phát / flash mua đất / hạt bụi vàng) ─── */
 let tileFx = [];      // {type:'shake'|'pulse'|'flash', idx, start, duration}
@@ -901,6 +901,25 @@ function drawTile(tile, idx, pos, ts){
     ctx.strokeRect(tx+1.5,ty+1.5,tw-3,th-3);
   }
 
+  // ── Marker chủ sở hữu: đóng dấu MÀU ĐỘI ngay GIỮA ô, làm mờ/nhoè để không đè lên chữ ──
+  // (dùng PNG nếu có file ở ./assets/owner-mark.png, không thì fallback chấm tròn màu đội)
+  if(owner!==null){
+    const markCx=tx+tw/2, markCy=ty+th/2;
+    ctx.save();
+    ctx.globalAlpha = 0.32;
+    ctx.filter = "blur(2.5px)";
+    if(ownerMarkImgReady){
+      const S = Math.min(tw,th)*0.6;
+      ctx.drawImage(ownerMarkImg, markCx-S/2, markCy-S/2, S, S);
+    } else {
+      const MR = Math.min(tw,th)*0.24;
+      ctx.beginPath(); ctx.arc(markCx, markCy, MR, 0, Math.PI*2);
+      ctx.fillStyle = state.players[owner].color;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   // ── Nội dung ──
   ctx.textAlign="center"; ctx.textBaseline="middle";
 
@@ -921,11 +940,11 @@ function drawTile(tile, idx, pos, ts){
         ctx.fillText(lines[0], cxc, cyc-nSz*1.2);
         ctx.fillText(lines[1], cxc, cyc-nSz*0.1);
       }
-      const pSz = fitFont(`Mua:${tile.price}$`, tw*0.85, 700, nSz, "Nunito");
+      const pSz = fitFont(`Mua:${tile.price}$`, tw*0.85, 700, nSz*0.72, "Nunito");
       ctx.fillStyle="#c0392b";
-      ctx.fillText(`Mua:${tile.price}$`, cxc, cyc+nSz*0.95);
-      fitFont(`MB:${displayRent}$`, tw*0.85, 700, pSz, "Nunito");
-      ctx.fillText(`MB:${displayRent}$`, cxc, cyc+nSz*0.95+pSz*1.3);
+      ctx.fillText(`Mua:${tile.price}$`, cxc, cyc+nSz*0.85);
+      const rSz = fitFont(`MB:${displayRent}$`, tw*0.85, 700, pSz, "Nunito");
+      ctx.fillText(`MB:${displayRent}$`, cxc, cyc+nSz*0.85+rSz*1.15);
     } else {
       // Ô góc đặc biệt: Tù / Xuất phát
       const iconMap={jail:"🚔",tax:"💸",start:"🚩",state:"⚡"};
@@ -970,12 +989,12 @@ function drawTile(tile, idx, pos, ts){
         ctx.fillText(lines[0], cxc, cyc-gap*0.9);
         ctx.fillText(lines[1], cxc, cyc-gap*0.1);
       }
-      const priceSz = fitFont(`Mua:${tile.price}$`, maxW*0.9, 700, nSz, "Nunito");
+      const priceSz = fitFont(`Mua:${tile.price}$`, maxW*0.9, 700, nSz*0.72, "Nunito");
       ctx.fillStyle="#c0392b";
-      const priceY = cyc + gap*(lines.length===1 ? 0.55 : 1.0);
+      const priceY = cyc + gap*(lines.length===1 ? 0.5 : 0.9);
       ctx.fillText(`Mua:${tile.price}$`, cxc, priceY);
-      fitFont(`MB:${displayRent}$`, maxW*0.9, 700, priceSz, "Nunito");
-      ctx.fillText(`MB:${displayRent}$`, cxc, priceY + priceSz*1.3);
+      const rentSz = fitFont(`MB:${displayRent}$`, maxW*0.9, 700, priceSz, "Nunito");
+      ctx.fillText(`MB:${displayRent}$`, cxc, priceY + rentSz*1.15);
     } else if(tile.type==="tax"){
       const lines=wrapText(tile.name, maxW, 700, BASE, "Nunito");
       const nSz=fitFont(lines[0], maxW, 700, BASE, "Nunito");
@@ -1004,23 +1023,6 @@ function drawTile(tile, idx, pos, ts){
       const nSz=fitFont(tile.name, maxW, 700, BASE, "Nunito");
       ctx.fillStyle="#2d2150"; ctx.fillText(tile.name, cxc, cyc);
     }
-  }
-
-  // ── Marker chủ sở hữu: chấm tròn màu đội ở góc trong của ô (sau này thay bằng PNG) ──
-  if(owner!==null){
-    const MR=7;
-    let mx,my;
-    // Đặt ở góc hướng vào tâm bàn (ngược chiều thanh màu)
-    if(side==='top')         { mx=tx+tw-MR-3; my=ty+th-MR-3; }
-    else if(side==='bottom') { mx=tx+MR+3;    my=ty+MR+3; }
-    else if(side==='right')  { mx=tx+MR+3;    my=ty+MR+3; }
-    else if(side==='left')   { mx=tx+tw-MR-3; my=ty+MR+3; }
-    else                     { mx=tx+tw-MR-3; my=ty+MR+3; } // corner
-    ctx.save();
-    ctx.beginPath(); ctx.arc(mx,my,MR,0,Math.PI*2);
-    ctx.fillStyle=state.players[owner].color; ctx.fill();
-    ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.stroke();
-    ctx.restore();
   }
 
   // ── Sáng lóe ô Xuất phát ──
