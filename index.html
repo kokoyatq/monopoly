@@ -943,8 +943,8 @@ function drawTile(tile, idx, pos, ts){
   if(owner!==null){
     const markCx=tx+tw/2, markCy=ty+th/2;
     ctx.save();
-    ctx.globalAlpha = 0.32; // Độ mờ 32% giữ nguyên của ông
-    ctx.filter = "blur(2.5px)"; // Độ nhòe giữ nguyên của ông
+    ctx.globalAlpha = 0.6; // Độ mờ 32% giữ nguyên của ông
+ 
     
     const tImg = tokenImgs[owner];
     if(tImg && tImg.ready){
