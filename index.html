@@ -36,10 +36,20 @@
     position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
     width:130%; height:130%; pointer-events:none; z-index:0;
   }
-  #boardRightPanel{
+  #boardRightPanel, #boardLeftPanel{
     display:flex; flex-direction:column; gap:12px; align-self:stretch; justify-content:center;
     min-width:160px; max-width:190px;
   }
+  .rules-box{
+    background:var(--panel); color:var(--panel-text); padding:14px 16px; border-radius:18px;
+    font-size:11.5px; font-weight:700;
+    box-shadow:0 6px 0 rgba(0,0,0,.15), 0 10px 18px rgba(0,0,0,.25);
+    display:flex; flex-direction:column; gap:9px;
+  }
+  .rules-box h3{margin:0 0 2px; font-size:14px; color:#7b3ff2; display:flex; align-items:center; gap:6px;}
+  .rules-box ul{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px;}
+  .rules-box li{display:flex; align-items:flex-start; gap:6px; line-height:1.35;}
+  .rules-box li i{flex-shrink:0;}
   #phaseBar{
     background:var(--panel); color:var(--panel-text);
     padding:14px 16px; border-radius:18px; font-size:13px; font-weight:700;
@@ -189,6 +199,19 @@
 <body>
 
 <div id="boardWrap">
+  <div id="boardLeftPanel">
+    <div class="rules-box">
+      <h3>📜 Luật chơi</h3>
+      <ul>
+        <li><i>🎲</i>Đổ xúc xắc, đi theo số điểm</li>
+        <li><i>🏠</i>Đáp đất trống → được mua</li>
+        <li><i>💸</i>Đáp đất người khác → trả tiền thuê</li>
+        <li><i>🧾</i>Ô Thuế / Nhà nước → mất phí</li>
+        <li><i>🚔</i>Vào Tù → chờ, trả tiền hoặc đổ đôi để ra</li>
+        <li><i>🏁</i>Qua Xuất phát → +200$</li>
+      </ul>
+    </div>
+  </div>
   <div id="canvasWrap">
     <canvas id="bgParticles" width="1140" height="1140"></canvas>
     <canvas id="boardCanvas" width="760" height="760"></canvas>
