@@ -30,21 +30,47 @@
   }
   h1,h2,h3,.heading-font{font-family:'Baloo 2',sans-serif;}
 
-  #boardWrap{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; position:relative;}
-  #canvasWrap{position:relative; display:inline-block;}
+  #boardWrap{flex:1; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:16px; position:relative;}
+  #canvasWrap{position:relative; display:inline-block; flex-shrink:0;}
   #bgParticles{
     position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
     width:130%; height:130%; pointer-events:none; z-index:0;
   }
- #boardCanvas{
-  position:relative; z-index:1;
-  background:linear-gradient(150deg, #f0ddb8 0%, #d9bd8c 50%, #c9a876 100%);
-  border-radius:22px;
-  box-shadow:0 12px 0 rgba(0,0,0,.25), 0 18px 40px rgba(0,0,0,.45), inset 0 0 0 6px rgba(255,255,255,.22);
-  max-width:unset !important; max-height:unset !important;
-  width:unset !important; height:unset !important;
-  display:block;
-}
+  #boardRightPanel{
+    display:flex; flex-direction:column; gap:12px; align-self:stretch; justify-content:center;
+    min-width:160px; max-width:190px;
+  }
+  #phaseBar{
+    background:var(--panel); color:var(--panel-text);
+    padding:14px 16px; border-radius:18px; font-size:13px; font-weight:700;
+    box-shadow:0 6px 0 rgba(0,0,0,.15), 0 10px 18px rgba(0,0,0,.25);
+    display:flex; flex-direction:column; gap:8px;
+  }
+  #phaseBar b{color:#7b3ff2; font-family:'Baloo 2',sans-serif;}
+  #phaseBar .timer-big{font-size:28px; font-family:'Baloo 2',sans-serif; color:#7b3ff2; text-align:center; letter-spacing:2px;}
+  #phaseBar.suggest{animation:pulseBar 1.3s infinite;}
+  @keyframes pulseBar{0%{box-shadow:0 6px 0 rgba(0,0,0,.15),0 0 0 0 rgba(255,183,3,.7);}70%{box-shadow:0 6px 0 rgba(0,0,0,.15),0 0 0 14px rgba(255,183,3,0);}100%{box-shadow:0 6px 0 rgba(0,0,0,.15),0 0 0 0 rgba(255,183,3,0);}}
+  #currentTurnBox{
+    background:var(--panel); padding:12px 16px; border-radius:18px; font-size:12.5px; font-weight:700;
+    box-shadow:0 6px 0 rgba(0,0,0,.15), 0 10px 18px rgba(0,0,0,.25);
+    display:flex; flex-direction:column; gap:6px; align-items:center; text-align:center;
+  }
+  #currentTurnBox .turn-label{font-size:11px; color:#888; font-weight:600;}
+  #currentTurnName{font-size:15px; color:#2d2150; font-family:'Baloo 2',sans-serif;}
+  #currentTurnDot{width:18px; height:18px; border-radius:50%; display:inline-block; margin-bottom:2px;}
+  .legend-right{
+    background:var(--panel); padding:12px 16px; border-radius:18px; font-size:11.5px; font-weight:700;
+    box-shadow:0 6px 0 rgba(0,0,0,.15), 0 10px 18px rgba(0,0,0,.25);
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .legend-right span{display:flex; align-items:center; gap:7px;}
+  .legend-right .sw{width:12px; height:12px; border-radius:3px; flex-shrink:0;}
+    position:relative; z-index:1;
+    background:linear-gradient(150deg, #f0ddb8 0%, #d9bd8c 50%, #c9a876 100%);
+    border-radius:22px;
+    box-shadow:0 12px 0 rgba(0,0,0,.25), 0 18px 40px rgba(0,0,0,.45), inset 0 0 0 6px rgba(255,255,255,.22);
+    max-width:88vmin; max-height:88vmin; display:block;
+  }
 
   #diceOverlay{
     position:absolute; top:50%; left:50%;
@@ -171,11 +197,6 @@
 <body>
 
 <div id="boardWrap">
-  <div id="phaseBar">
-    <span>⏱ <b id="timer">00:00</b></span>
-    <span>Giai đoạn: <b id="phaseName">-</b></span>
-    <span id="suggestText" style="color:#e0680b; display:none;">⏰ Chỉ MC mới chuyển giai đoạn được</span>
-  </div>
   <div id="canvasWrap">
     <canvas id="bgParticles" width="1140" height="1140"></canvas>
     <canvas id="boardCanvas" width="880" height="880"></canvas>
@@ -184,10 +205,22 @@
     <div id="weakBanner"></div>
     <div id="eventBanner"></div>
   </div>
-  <div class="legend">
-    <span><i class="sw" style="background:var(--nn)"></i>🌾 Nông nghiệp</span>
-    <span><i class="sw" style="background:var(--tn)"></i>🏬 Thương nghiệp</span>
-    <span><i class="sw" style="background:var(--dv)"></i>🏥 Dịch vụ</span>
+  <div id="boardRightPanel">
+    <div id="phaseBar">
+      <div class="timer-big" id="timer">00:00</div>
+      <span>Giai đoạn: <b id="phaseName">-</b></span>
+      <span id="suggestText" style="color:#e0680b; display:none;">⏰ Chỉ MC mới chuyển giai đoạn được</span>
+    </div>
+    <div id="currentTurnBox">
+      <div class="turn-label">🎯 Lượt hiện tại</div>
+      <div id="currentTurnDot"></div>
+      <div id="currentTurnName">—</div>
+    </div>
+    <div class="legend-right">
+      <span><i class="sw" style="background:#4ade80"></i>🌾 Nông nghiệp</span>
+      <span><i class="sw" style="background:#fb923c"></i>🏬 Thương nghiệp</span>
+      <span><i class="sw" style="background:#c084fc"></i>🏥 Dịch vụ</span>
+    </div>
   </div>
 </div>
 
@@ -196,6 +229,14 @@
   <div id="myTag">Connected: <b id="myTagName">Khán giả / Máy chiếu</b></div>
   <div id="diceResult">-</div>
   <button id="btnRoll" class="btn-main">🎲🎲 Đổ xúc xắc</button>
+  <div id="rollCountdownWrap" style="display:none; margin-top:6px;">
+    <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:700; color:#888; margin-bottom:3px;">
+      <span>⏱ Tự động mất lượt:</span><span id="rollCountdownNum" style="color:#e11d48;">10s</span>
+    </div>
+    <div style="background:#fde8e8; border-radius:999px; height:5px; overflow:hidden;">
+      <div id="rollCountdownBar" style="height:100%; background:#e11d48; border-radius:999px; width:100%; transition:width .4s linear;"></div>
+    </div>
+  </div>
   <div id="players"></div>
   <div id="log"></div>
 </div>
@@ -237,7 +278,15 @@
       </div>
     </div>
     <p id="buyMoney" style="margin:0 0 4px; font-size:13px; font-weight:700;"></p>
-    <p id="buyWarn" style="margin:0 0 14px; color:#e11d48; font-weight:700; font-size:13px; min-height:18px;"></p>
+    <p id="buyWarn" style="margin:0 0 8px; color:#e11d48; font-weight:700; font-size:13px; min-height:18px;"></p>
+    <div id="buyCountdownWrap" style="margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:700; color:#888; margin-bottom:4px;">
+        <span>⏱ Tự động mua sau:</span><span id="buyCountdownNum" style="color:#7b3ff2;">15s</span>
+      </div>
+      <div style="background:#e9e0ff; border-radius:999px; height:6px; overflow:hidden;">
+        <div id="buyCountdownBar" style="height:100%; background:#7b3ff2; border-radius:999px; width:100%; transition:width .4s linear;"></div>
+      </div>
+    </div>
     <div class="row-flex">
       <button class="btn-buy" id="btnBuyYes">✅ Mua</button>
       <button class="btn-skip" id="btnBuyNo">❌ Bỏ qua</button>
@@ -301,13 +350,6 @@ const warnedWeak = new Set();
 let state = null;
 const canvas = document.getElementById("boardCanvas");
 const ctx = canvas.getContext("2d");
-const DPR = window.devicePixelRatio || 1;
-const LOGICAL = 880;
-canvas.width  = LOGICAL * DPR;
-canvas.height = LOGICAL * DPR;
-canvas.style.width  = `min(${LOGICAL}px, 94vmin)`;
-canvas.style.height = `min(${LOGICAL}px, 94vmin)`;
-ctx.scale(DPR, DPR);
 
 /* ─── Hiệu ứng đồ họa giữa bàn (rung ô / sáng lóe Xuất phát / flash mua đất / hạt bụi vàng) ─── */
 let tileFx = [];      // {type:'shake'|'pulse'|'flash', idx, start, duration}
@@ -353,11 +395,11 @@ function findNewlyBoughtTile(prevState, newState){
 
 /* ─── Board geometry — Monopoly style ─── */
 // CW = góc vuông lớn, SW = chiều ngắn ô cạnh (dọc theo viền), SH = chiều sâu ô cạnh (vào trong bàn)
-const CW = 107;            // corner tile size
-const SW = 74;            // side tile: narrow dim (along edge)
-const SH = 107;            // side tile: deep dim (into board) — same as CW
+const CW = 92;            // corner tile size
+const SW = 64;            // side tile: narrow dim (along edge)
+const SH = 92;            // side tile: deep dim (into board) — same as CW
 const BAND = 14;          // color band thickness
-const BOARD_W = 880;      // must equal canvas width
+const BOARD_W = 760;      // must equal canvas width
 
 // Trả về mảng {x,y,w,h,side} cho từng ô (side = 'top'|'right'|'bottom'|'left'|'corner-tl'|...)
 function buildTileRects(){
@@ -699,6 +741,13 @@ function renderAll(){
   const suggested = state.phase < PHASE_SUGGEST_SECONDS.length && state.elapsedSec >= PHASE_SUGGEST_SECONDS[state.phase];
   document.getElementById("phaseBar").classList.toggle("suggest", !!suggested);
   document.getElementById("suggestText").style.display = suggested ? "inline" : "none";
+  // Cập nhật lượt hiện tại ở panel phải
+  const curId = currentPlayerId(state);
+  const curPlayer = curId !== null ? state.players[curId] : null;
+  document.getElementById("currentTurnName").textContent = curPlayer ? curPlayer.name : "—";
+  const dot = document.getElementById("currentTurnDot");
+  dot.style.background = curPlayer ? curPlayer.color : "transparent";
+  dot.style.display = curPlayer ? "inline-block" : "none";
   renderBoard();
   renderPlayers();
   renderLog();
@@ -708,6 +757,15 @@ function renderAll(){
 }
 
 /* ─── Board drawing ─── */
+// Fallback nếu browser chưa hỗ trợ ctx.roundRect native
+if(!CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r){
+    this.beginPath(); this.moveTo(x+r,y);
+    this.arcTo(x+w,y,x+w,y+h,r); this.arcTo(x+w,y+h,x,y+h,r);
+    this.arcTo(x,y+h,x,y,r);     this.arcTo(x,y,x+w,y,r);
+    this.closePath();
+  };
+}
 function roundRect(x,y,w,h,r){
   ctx.beginPath(); ctx.moveTo(x+r,y);
   ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
@@ -858,7 +916,7 @@ function drawTile(tile, idx, pos, ts){
         ctx.fillText(lines[0], cxc, cyc-gap*0.9);
         ctx.fillText(lines[1], cxc, cyc-gap*0.1);
       }
-      const priceSz = fitFont(`Mua:${tile.price}$`, maxW*0.9, 700, nSz*0.72, "Nunito");
+      const priceSz = fitFont(`Mua:${tile.price}$`, maxW*0.9, 700, nSz, "Nunito");
       ctx.fillStyle="#c0392b";
       const priceY = cyc + gap*(lines.length===1 ? 0.55 : 1.0);
       ctx.fillText(`Mua:${tile.price}$`, cxc, priceY);
@@ -887,7 +945,7 @@ function drawTile(tile, idx, pos, ts){
         ctx.fillText(lines[1], cxc, cyc-nSz*0.1);
       }
       fitFont("-100$", maxW*0.85, 800, nSz*0.9, "Nunito");
-      ctx.fillStyle="#c0392b"; ctx.fillText("-100$", cxc, cyc+nSz*0.75);
+      ctx.fillStyle="#555"; ctx.fillText("-100$", cxc, cyc+nSz*0.75);
     } else {
       const nSz=fitFont(tile.name, maxW, 700, BASE, "Nunito");
       ctx.fillStyle="#2d2150"; ctx.fillText(tile.name, cxc, cyc);
@@ -1013,41 +1071,107 @@ function drawFloatTexts(ts){
   ctx.globalAlpha = 1;
 }
 function drawCenterLogo(){
-  // Vùng giữa bàn cờ: từ (CW,CW) đến (BOARD_W-CW, BOARD_W-CW)
   const cx = BOARD_W/2, cy = BOARD_W/2;
-  const innerW = BOARD_W - 2*CW; // 576px
+  const innerW = BOARD_W - 2*CW;
   const r = innerW * 0.28;
+  const now = Date.now();
 
   ctx.save();
-  // Hình thoi mảnh trang trí kiểu la bàn cổ điển, mờ nhẹ
+  // Trang trí la bàn mờ nhẹ
   ctx.translate(cx, cy);
-  ctx.globalAlpha = 0.10;
-  ctx.strokeStyle = "#5c4324";
-  ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.08;
+  ctx.strokeStyle = "#5c4324"; ctx.lineWidth = 2;
   for(let i=0;i<4;i++){
-    ctx.save();
-    ctx.rotate((Math.PI/2)*i + Math.PI/4);
-    ctx.beginPath();
-    ctx.moveTo(0,0); ctx.lineTo(r*1.55, 0);
-    ctx.stroke();
+    ctx.save(); ctx.rotate((Math.PI/2)*i + Math.PI/4);
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(r*1.55,0); ctx.stroke();
     ctx.restore();
   }
-  ctx.beginPath();
-  ctx.arc(0,0,r*0.62,0,Math.PI*2);
-  ctx.stroke();
+  ctx.beginPath(); ctx.arc(0,0,r*0.62,0,Math.PI*2); ctx.stroke();
   ctx.restore();
 
-  // Logo + tên game
   ctx.save();
   ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.font = `${r*0.42}px serif`;
-  ctx.globalAlpha = 0.5;
-  ctx.fillText("🏛️", cx, cy - r*0.22);
-  ctx.globalAlpha = 0.65;
+
+  // Tên game nhỏ phía trên
+  ctx.globalAlpha = 0.45;
   ctx.fillStyle = "#5c4324";
-  ctx.font = `800 ${Math.max(14, r*0.135)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("TỪ CẠNH TRANH", cx, cy + r*0.26);
-  ctx.fillText("ĐẾN ĐỘC QUYỀN", cx, cy + r*0.45);
+  ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
+  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*0.72);
+
+  if(!state || !state.turnOrderLocked || state.gameEnded){
+    // Chưa bắt đầu — chỉ hiện logo
+    ctx.globalAlpha = 0.45;
+    ctx.font = `${r*0.38}px serif`;
+    ctx.fillText("🏛️", cx, cy);
+    ctx.restore();
+    return;
+  }
+
+  const curId = currentPlayerId(state);
+  const curPlayer = curId !== null ? state.players[curId] : null;
+
+  // ── Lượt của ai ──
+  if(curPlayer){
+    // Chấm màu đội
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(cx - r*0.18, cy - r*0.32, r*0.09, 0, Math.PI*2);
+    ctx.fillStyle = curPlayer.color;
+    ctx.fill();
+    ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
+
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#2d2150";
+    ctx.font = `700 ${Math.max(13, r*0.155)}px 'Baloo 2', sans-serif`;
+    ctx.fillText("LƯỢT CỦA", cx, cy - r*0.50);
+    ctx.font = `800 ${Math.max(16, r*0.20)}px 'Baloo 2', sans-serif`;
+    ctx.fillStyle = curPlayer.color;
+    ctx.fillText(curPlayer.name, cx, cy - r*0.28);
+  }
+
+  // ── Countdown ──
+  const hasBuy  = state.pendingBuyTile !== null && state.pendingBuyExpireAt;
+  const hasRoll = !hasBuy && state.turnStartedAt;
+
+  if(hasBuy || hasRoll){
+    const total  = hasBuy ? BUY_TIMEOUT : ROLL_TIMEOUT;
+    const expire = hasBuy ? state.pendingBuyExpireAt : (state.turnStartedAt + ROLL_TIMEOUT);
+    const remain = Math.max(0, expire - now);
+    const pct    = remain / total; // 1.0 → 0.0
+    const secs   = Math.ceil(remain / 1000);
+    const label  = hasBuy ? "⏱ Mua đất" : "⏱ Roll";
+    const color  = hasBuy ? "#7b3ff2" : "#e11d48";
+    const barR   = r * 0.55;
+    const barY   = cy + r * 0.10;
+    const barH   = r * 0.10;
+
+    // Label
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = color;
+    ctx.font = `700 ${Math.max(11, r*0.115)}px 'Nunito', sans-serif`;
+    ctx.fillText(label, cx, barY - barH - r*0.10);
+
+    // Thanh nền
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(cx - barR, barY, barR*2, barH, barH/2);
+    ctx.fill();
+
+    // Thanh tiến trình
+    ctx.globalAlpha = 0.88;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(cx - barR, barY, barR*2*pct, barH, barH/2);
+    ctx.fill();
+
+    // Số giây
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    ctx.font = `800 ${Math.max(20, r*0.28)}px 'Baloo 2', sans-serif`;
+    ctx.fillText(`${secs}s`, cx, barY + barH + r*0.26);
+  }
+
   ctx.restore();
 }
 function renderBoard(ts){
@@ -1072,6 +1196,56 @@ function ambientLoop(ts){
   requestAnimationFrame(ambientLoop);
 }
 requestAnimationFrame(ambientLoop);
+
+/* ─── Đếm ngược 2 timer: mua đất (15s) và roll (10s) ─── */
+const BUY_TIMEOUT  = 15000;
+const ROLL_TIMEOUT = 10000;
+setInterval(()=>{
+  if(!state || !state.turnOrderLocked || state.gameEnded) return;
+  const now = Date.now();
+  const curId = currentPlayerId(state);
+  const isMyTurn = myPlayerId !== null && curId === myPlayerId && !isDisplayMode;
+
+  // ── Timer mua đất (15s) ──
+  const buyEl    = document.getElementById("buyCountdownBar");
+  const buyNumEl = document.getElementById("buyCountdownNum");
+  if(state.pendingBuyTile !== null && state.pendingBuyExpireAt){
+    const remain = Math.max(0, state.pendingBuyExpireAt - now);
+    const pct    = (remain / BUY_TIMEOUT) * 100;
+    if(buyEl)    buyEl.style.width = pct + "%";
+    if(buyNumEl) buyNumEl.textContent = Math.ceil(remain/1000) + "s";
+    if(isMyTurn && remain === 0 && !sequenceLocked){
+      document.getElementById("btnBuyYes")?.click();
+    }
+  } else {
+    if(buyEl)    buyEl.style.width = "100%";
+    if(buyNumEl) buyNumEl.textContent = "15s";
+  }
+
+  // ── Timer roll (10s) ──
+  const rollWrap  = document.getElementById("rollCountdownWrap");
+  const rollBar   = document.getElementById("rollCountdownBar");
+  const rollNumEl = document.getElementById("rollCountdownNum");
+  const canRoll   = isMyTurn && !sequenceLocked && state.pendingBuyTile === null
+                    && curId !== null && state.players[curId]?.jailTurns === 0;
+  if(rollWrap) rollWrap.style.display = canRoll ? "block" : "none";
+  if(canRoll && state.turnStartedAt){
+    const remain = Math.max(0, state.turnStartedAt + ROLL_TIMEOUT - now);
+    const pct    = (remain / ROLL_TIMEOUT) * 100;
+    if(rollBar)   rollBar.style.width = pct + "%";
+    if(rollNumEl) rollNumEl.textContent = Math.ceil(remain/1000) + "s";
+    if(remain === 0 && !sequenceLocked){
+      sequenceLocked = true; updateRollButton();
+      gameAction(GAME_ID, myPlayerId, "skip-turn")
+        .then(r=>{ state=r.state; if(state.lastEventId) lastSeenEventId=state.lastEventId; })
+        .catch(()=>{})
+        .finally(()=>{ sequenceLocked=false; renderAll(); });
+    }
+  } else {
+    if(rollBar)   rollBar.style.width = "100%";
+    if(rollNumEl) rollNumEl.textContent = "10s";
+  }
+}, 400);
 
 /* ─── Particle nền phía sau bàn cờ — canvas RIÊNG BIỆT hoàn toàn, không đụng tới
    canvas bàn cờ chính (boardCanvas) nên không thể ảnh hưởng tới vẽ ô/token/logic game. ─── */
@@ -1152,14 +1326,10 @@ function renderPlayers(){
     if(weak) tags+=`<span class="tag weak">⚠️ Yếu</span>`;
     if(isMonopoly(state,p)) tags+=`<span class="tag mono">👑 Độc quyền</span>`;
     if(p.jailTurns>0) tags+=`<span class="tag jail">🚔 Tù ${p.jailTurns}</span>`;
-    if(p.status==="shareholder"&&p.shareholderEquity)
-      tags+=`<span class="tag shareholder-tag">📊 ${Math.round(p.shareholderEquity*100)}%</span>`;
     let statusText="";
-    if(p.status==="shareholder")
-      statusText=` (Cổ đông ${Math.round((p.shareholderEquity||0)*100)}% của ${state.players[p.shareholderOf].name})`;
-    else if(p.status==="eliminated") statusText=" (Đã bị loại)";
+    if(p.status==="eliminated") statusText=" (Đã bị loại)";
     div.innerHTML=`<span class="dot" style="background:${p.color}"></span><b>${p.name}</b>${statusText} ${tags}<br/>
-      💰 ${p.money.toLocaleString()}$ &nbsp; 📍${p.position} &nbsp; 🏠${p.properties.length} &nbsp; Σ${totalAssets(state,p).toLocaleString()}$`;
+      💰 ${p.money.toLocaleString()}$ &nbsp; Σ ${totalAssets(state,p).toLocaleString()}$`;
     wrap.appendChild(div);
   });
 }
@@ -1276,9 +1446,11 @@ document.getElementById("btnRoll").addEventListener("click", async ()=>{
 function advanceTurn(s){ s.currentTurnPos=nextTurnIndexFor(s); }
 function nextTurnIndexFor(s){
   const n = s.turnOrder.length;
+  const anyActive = s.turnOrder.some(id => s.players[id].status === "active");
+  if(!anyActive){ s.gameEnded = true; return s.currentTurnPos; }
   let pos=s.currentTurnPos, tries=0;
   do{ pos=(pos+1)%n; tries++; }
-  while(s.players[s.turnOrder[pos]].status!=="active" && tries<=n);
+  while(s.players[s.turnOrder[pos]].status!=="active" && tries<n);
   return pos;
 }
 
