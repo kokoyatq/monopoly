@@ -1240,25 +1240,7 @@ function drawCenterLogo(){
   const curPlayer = curId !== null ? state.players[curId] : null;
 
   // ── Lượt của ai ──
-  if(curPlayer){
-   // ── In ảnh Token của người chơi thay cho chấm tròn ──
-    const tImg = tokenImgs[curPlayer.id];
-    const tSize = r * 0.22; // Điều chỉnh số 0.22 nếu muốn icon to/nhỏ hơn
-    const posX = cx - r * 0.18;
-    const posY = cy - r * 0.32;
-
-    ctx.globalAlpha = 1;
-    if (tImg && tImg.ready) {
-      // Vẽ ảnh Token nếu đã load xong
-      ctx.drawImage(tImg.img, posX - tSize/2, posY - tSize/2, tSize, tSize);
-    } else {
-      // Fallback: Nếu chưa load được ảnh thì vẽ chấm tròn màu cũ
-      ctx.beginPath();
-      ctx.arc(posX, posY, tSize/2.2, 0, Math.PI*2);
-      ctx.fillStyle = curPlayer.color;
-      ctx.fill();
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
-    }
+  
 
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#2d2150";
