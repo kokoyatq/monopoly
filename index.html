@@ -541,6 +541,12 @@ function runRemoteSequence(prevState, pendingEvents){
             queueEventBanners(pendingEvents);
             applyBoardFx(pendingEvents, to);
           }
+          // Dự phòng: nếu người đang đi bị lag/crash giữa chừng nên chưa kịp tự khởi động đồng hồ
+          // 15s, thì màn hình xem chung / các người chơi khác cũng đã animate xong nên có thể tự
+          // khởi động thay (idempotent — có guard !pendingBuyExpireAt nên không set trùng).
+          if(state.pendingBuyTile !== null && state.pendingBuyTile !== undefined){
+            startBuyTimerIfNeeded(state.pendingBuyTile);
+          }
         });
       }catch(e){
         console.error("animateTokenMove lỗi:", e);
@@ -1258,15 +1264,50 @@ setInterval(()=>{
 const BUY_TIMEOUT  = 15000;
 const ROLL_TIMEOUT = 10000;
 
-// Tự vá: nếu ván đã khoá thứ tự lượt chơi (turnOrderLocked) nhưng thiếu mốc thời gian
-// turnStartedAt / pendingBuyExpireAt — thường do bước "bắt đầu game" ở admin không set 2 mốc
-// này (chỉ advanceTurn() ở server mới set, mà lượt đầu tiên không đi qua advanceTurn) — thì
-// tự bù ngay 1 lần để 2 đồng hồ đếm ngược 10s/15s bắt đầu chạy, không cần đợi hết lượt đầu.
+// Server CỐ TÌNH không set pendingBuyExpireAt khi mở màn mua đất — đồng hồ 15s chỉ được phép
+// bắt đầu chạy SAU KHI animation xúc xắc + di chuyển quân cờ tới ô đích đã chạy xong trên màn
+// hình (gọi ngay trước khi mở buyModal, ở 2 chỗ: roll bình thường và jail-roll đổ đôi).
+// Guard bằng cờ + so sánh idx để không set trùng/set lại cho ô mua đất cũ.
+let buyTimerStarting = false;
+async function startBuyTimerIfNeeded(expectedIdx){
+  if(!state) return;
+  if(state.pendingBuyTile === null || state.pendingBuyTile === undefined) return;
+  if(state.pendingBuyTile !== expectedIdx) return; // state đã đổi (ví dụ do action khác chen ngang)
+  if(state.pendingBuyExpireAt) return; // đã có người set rồi (chính mình hoặc client khác)
+  if(buyTimerStarting) return;
+  buyTimerStarting = true;
+  try{
+    const fixed = await mutateState(s=>{
+      if(s.pendingBuyTile === expectedIdx && !s.pendingBuyExpireAt){
+        s.pendingBuyExpireAt = Date.now() + BUY_TIMEOUT;
+      }
+    });
+    if(fixed){ state = fixed; renderAll(); }
+  }catch(e){ console.error("startBuyTimerIfNeeded lỗi:", e); }
+  buyTimerStarting = false;
+}
+
+// Tự vá (lưới an toàn dự phòng): nếu ván đã khoá thứ tự lượt chơi (turnOrderLocked) nhưng thiếu
+// mốc turnStartedAt / pendingBuyExpireAt — ví dụ do mất kết nối, đóng tab giữa chừng khiến
+// startBuyTimerIfNeeded() phía trên không kịp chạy — thì tự bù lại. Với pendingBuyExpireAt, PHẢI
+// đợi đủ lâu (hơn thời lượng animation tối đa: 4s xúc xắc + tối đa ~6s di chuyển ≈ 10s) trước khi
+// tự vá, để không "cướp" mất thời điểm mà startBuyTimerIfNeeded() lẽ ra sẽ set đúng lúc.
+const BUY_FIX_GRACE_MS = 12000;
+let buyFixMissingSince = null;
 let healingTimers = false;
 async function selfHealTimers(){
   if(!state || !state.turnOrderLocked || state.gameEnded || healingTimers) return;
   const needsRollFix = (state.pendingBuyTile === null || state.pendingBuyTile === undefined) && !state.turnStartedAt;
-  const needsBuyFix  = state.pendingBuyTile !== null && state.pendingBuyTile !== undefined && !state.pendingBuyExpireAt;
+  const needsBuyFixRaw = state.pendingBuyTile !== null && state.pendingBuyTile !== undefined && !state.pendingBuyExpireAt;
+
+  let needsBuyFix = false;
+  if(needsBuyFixRaw){
+    if(!buyFixMissingSince) buyFixMissingSince = Date.now();
+    needsBuyFix = (Date.now() - buyFixMissingSince) >= BUY_FIX_GRACE_MS;
+  } else {
+    buyFixMissingSince = null;
+  }
+
   if(!needsRollFix && !needsBuyFix) return;
   healingTimers = true;
   try{
@@ -1274,7 +1315,7 @@ async function selfHealTimers(){
       if((s.pendingBuyTile === null || s.pendingBuyTile === undefined) && !s.turnStartedAt){
         s.turnStartedAt = Date.now();
       }
-      if(s.pendingBuyTile !== null && s.pendingBuyTile !== undefined && !s.pendingBuyExpireAt){
+      if(needsBuyFix && s.pendingBuyTile !== null && s.pendingBuyTile !== undefined && !s.pendingBuyExpireAt){
         s.pendingBuyExpireAt = Date.now() + BUY_TIMEOUT;
       }
     });
@@ -1518,6 +1559,7 @@ document.getElementById("btnRoll").addEventListener("click", async ()=>{
           if(!isDisplayMode){
             if(result.state.pendingBuyTile !== undefined && result.state.pendingBuyTile !== null){
               window.__pendingBuy = { idx: result.state.pendingBuyTile };
+              startBuyTimerIfNeeded(result.state.pendingBuyTile);
               openBuyModal(result.state.pendingBuyTile);
             } else if(landedTile && landedTile.type === "tax"){
               taxModal.classList.add("show");
@@ -1565,6 +1607,7 @@ function checkPendingBuy(){
   if(buyModal.classList.contains("show")) return;
   if(sequenceLocked) return;
   window.__pendingBuy = { idx: state.pendingBuyTile };
+  startBuyTimerIfNeeded(state.pendingBuyTile);
   openBuyModal(state.pendingBuyTile);
 }
 
@@ -1683,6 +1726,7 @@ document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
             if(!isDisplayMode){
               if(state.pendingBuyTile !== undefined && state.pendingBuyTile !== null){
                 window.__pendingBuy = { idx: state.pendingBuyTile };
+                startBuyTimerIfNeeded(state.pendingBuyTile);
                 openBuyModal(state.pendingBuyTile);
               } else if(landedTile && landedTile.type === "tax"){
                 taxModal.classList.add("show");
