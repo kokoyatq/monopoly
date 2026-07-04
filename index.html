@@ -1209,16 +1209,17 @@ function drawCenterLogo(){
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
- // 1. Tên game (Đẩy lên cao nhất)
+// Thay vì nhân với r (tỉ lệ), mình trừ thẳng vào cy (tâm)
+  // Số 120 và 90 là khoảng cách pixel tính từ tâm bàn cờ lên trên
+  // Số càng lớn (ví dụ 150, 180) thì chữ càng bay lên sát mép trên
   ctx.globalAlpha = 0.6;
   ctx.fillStyle = "#5c4324";
   ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*0.75); // Cao hơn nữa
+  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - 150); 
 
-  // 2. Dòng NHÓM
   ctx.fillStyle = "#2d2150";
   ctx.font = `700 ${Math.max(12, r*0.12)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("NHÓM: Đang cập nhật", cx, cy - r*0.58); // Đẩy lên theo
+  ctx.fillText("NHÓM: Đang cập nhật", cx, cy - 110);
 
   ctx.restore();
 
