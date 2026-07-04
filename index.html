@@ -1539,7 +1539,7 @@ function renderPlayers(){
     let statusText="";
     if(p.status==="eliminated") statusText=" (Đã bị loại)";
     div.innerHTML=`<span class="dot" style="background:${p.color}"></span><b>${p.name}</b>${statusText} ${tags}<br/>
-      💰 ${p.money.toLocaleString()}$ &nbsp; Σ ${totalAssets(state,p).toLocaleString()}$`;
+  💰 ${p.money.toLocaleString()}$ &nbsp; 🏠 ${p.properties.length} ô &nbsp; Σ ${totalAssets(state,p).toLocaleString()}$`;
     wrap.appendChild(div);
   });
 }
