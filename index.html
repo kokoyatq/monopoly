@@ -374,6 +374,15 @@ let ownerMarkImgReady = false;
 ownerMarkImg.onload  = ()=>{ ownerMarkImgReady = true; };
 ownerMarkImg.onerror = ()=>{ ownerMarkImgReady = false; };
 ownerMarkImg.src = "./assets/owner-mark.png";
+  /* ─── Ảnh Token quân cờ các đội ─── */
+const tokenImgs = [];
+for (let i = 0; i < 8; i++) {
+  const img = new Image();
+  tokenImgs[i] = { img: img, ready: false };
+  img.onload  = () => { tokenImgs[i].ready = true; };
+  img.onerror = () => { tokenImgs[i].ready = false; };
+  img.src = `./assets/token-${i}.png`;
+}
 
 /* ─── Hiệu ứng đồ họa giữa bàn (rung ô / sáng lóe Xuất phát / flash mua đất / hạt bụi vàng) ─── */
 let tileFx = [];      // {type:'shake'|'pulse'|'flash', idx, start, duration}
@@ -667,10 +676,15 @@ function animateTokenMove(playerId, from, to, onDone){
     renderBoard();
     ctx.save();
     ctx.shadowColor="rgba(0,0,0,.4)"; ctx.shadowBlur=4; ctx.shadowOffsetY=2;
-    ctx.beginPath(); ctx.fillStyle=player.color;
-    ctx.arc(currentX, currentY, TOKEN_R, 0, Math.PI*2); ctx.fill();
-    ctx.shadowBlur=0; ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
-    ctx.restore();
+   const tImg = tokenImgs[playerId];
+if (tImg && tImg.ready) {
+  const tSize = TOKEN_R * 2.5;
+  ctx.drawImage(tImg.img, currentX - tSize/2, currentY - tSize/2, tSize, tSize);
+} else {
+  ctx.beginPath(); ctx.fillStyle = player.color;
+  ctx.arc(currentX, currentY, TOKEN_R, 0, Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0; ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
+}
     requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
@@ -1111,10 +1125,15 @@ function drawTokens(ts){
         ctx.shadowBlur = 0;
       }
       ctx.shadowColor="rgba(0,0,0,.4)"; ctx.shadowBlur=4; ctx.shadowOffsetY=2;
-      ctx.beginPath(); ctx.fillStyle=p.color;
-      ctx.arc(cx,cy,TOKEN_R,0,Math.PI*2); ctx.fill();
-      ctx.shadowBlur=0; ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
-      ctx.restore();
+      const tImg = tokenImgs[p.id];
+if (tImg && tImg.ready) {
+  const tSize = TOKEN_R * 2.5;
+  ctx.drawImage(tImg.img, cx - tSize/2, cy - tSize/2, tSize, tSize);
+} else {
+  ctx.beginPath(); ctx.fillStyle = p.color;
+  ctx.arc(cx, cy, TOKEN_R, 0, Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0; ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
+}
     });
   });
 }
