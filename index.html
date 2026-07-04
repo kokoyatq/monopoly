@@ -1204,27 +1204,23 @@ function drawCenterLogo(){
   const r = innerW * 0.28;
   const now = Date.now();
 
+ // ── Trung tâm bàn cờ: Dọn dẹp & Hiển thị thông tin ──
   ctx.save();
-  // Trang trí la bàn mờ nhẹ
-  ctx.translate(cx, cy);
-  ctx.globalAlpha = 0.08;
-  ctx.strokeStyle = "#5c4324"; ctx.lineWidth = 2;
-  for(let i=0;i<4;i++){
-    ctx.save(); ctx.rotate((Math.PI/2)*i + Math.PI/4);
-    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(r*1.55,0); ctx.stroke();
-    ctx.restore();
-  }
-  ctx.beginPath(); ctx.arc(0,0,r*0.62,0,Math.PI*2); ctx.stroke();
-  ctx.restore();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
 
-  ctx.save();
-  ctx.textAlign="center"; ctx.textBaseline="middle";
-
-  // Tên game nhỏ phía trên
-  ctx.globalAlpha = 0.45;
+  // 1. Tên game (Đẩy lên cao hơn)
+  ctx.globalAlpha = 0.6;
   ctx.fillStyle = "#5c4324";
   ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*0.72);
+  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*0.75);
+
+  // 2. Dòng NHÓM mới thêm (Thay tên ở đây)
+  ctx.fillStyle = "#2d2150";
+  ctx.font = `700 ${Math.max(12, r*0.12)}px 'Baloo 2', sans-serif`;
+  ctx.fillText("NHÓM: Đang cập nhật", cx, cy - r*0.60);
+
+  ctx.restore();
 
   if(!state || !state.turnOrderLocked || state.gameEnded){
     // Chưa bắt đầu — chỉ hiện logo
