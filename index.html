@@ -938,17 +938,21 @@ function drawTile(tile, idx, pos, ts){
     ctx.strokeRect(tx+1.5,ty+1.5,tw-3,th-3);
   }
 
-  // ── Marker chủ sở hữu: đóng dấu MÀU ĐỘI ngay GIỮA ô, làm mờ/nhoè để không đè lên chữ ──
-  // (dùng PNG nếu có file ở ./assets/owner-mark.png, không thì fallback chấm tròn màu đội)
+ // ── Marker chủ sở hữu: đóng dấu MÀU ĐỘI ngay GIỮA ô, làm mờ/nhoè để không đè lên chữ ──
+  // (Tự động lấy ảnh Token của đội mua đất, nếu chưa có file thì fallback chấm tròn màu đội)
   if(owner!==null){
     const markCx=tx+tw/2, markCy=ty+th/2;
     ctx.save();
-    ctx.globalAlpha = 0.32;
-    ctx.filter = "blur(2.5px)";
-    if(ownerMarkImgReady){
+    ctx.globalAlpha = 0.32; // Độ mờ 32% giữ nguyên của ông
+    ctx.filter = "blur(2.5px)"; // Độ nhòe giữ nguyên của ông
+    
+    const tImg = tokenImgs[owner];
+    if(tImg && tImg.ready){
+      // Nếu đội này đã có file ảnh token-X.png -> In mờ ảnh đó lên ô đất
       const S = Math.min(tw,th)*0.6;
-      ctx.drawImage(ownerMarkImg, markCx-S/2, markCy-S/2, S, S);
+      ctx.drawImage(tImg.img, markCx-S/2, markCy-S/2, S, S);
     } else {
+      // Nếu chưa có file ảnh -> Fallback về chấm tròn màu đội y như cũ
       const MR = Math.min(tw,th)*0.24;
       ctx.beginPath(); ctx.arc(markCx, markCy, MR, 0, Math.PI*2);
       ctx.fillStyle = state.players[owner].color;
