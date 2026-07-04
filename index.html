@@ -938,25 +938,50 @@ function drawTile(tile, idx, pos, ts){
     ctx.strokeRect(tx+1.5,ty+1.5,tw-3,th-3);
   }
 
- // ── Marker chủ sở hữu: đóng dấu MÀU ĐỘI ngay GIỮA ô, làm mờ/nhoè để không đè lên chữ ──
-  // (Tự động lấy ảnh Token của đội mua đất, nếu chưa có file thì fallback chấm tròn màu đội)
+// ── Marker chủ sở hữu: Đưa ảnh Token nhỏ gọn lên THANH MÀU của ô đất ──
   if(owner!==null){
-    const markCx=tx+tw/2, markCy=ty+th/2;
     ctx.save();
-    ctx.globalAlpha = 0.6; // Độ mờ 32% giữ nguyên của ông
- 
+    
+    // 1. Tính toán kích thước icon dựa trên độ dày BAND của thanh màu
+    // (Để icon nhỏ hơn BAND một chút cho đẹp, bằng 80% độ dày thanh màu)
+    const tSize = BAND * 0.8; 
+    let iconX = tx + tw/2;
+    let iconY = ty + th/2;
+
+    // 2. Tính tọa độ tâm chính xác dựa vào hướng 'side' giống hệt logic vẽ thanh màu của bạn
+    if(side==='top') {
+      iconX = tx + tw/2;
+      iconY = ty + BAND/2;
+    }
+    if(side==='bottom') {
+      iconX = tx + tw/2;
+      iconY = ty + th - BAND/2;
+    }
+    if(side==='right') {
+      iconX = tx + tw - BAND/2;
+      iconY = ty + th/2;
+    }
+    if(side==='left') {
+      iconX = tx + BAND/2;
+      iconY = ty + th/2;
+    }
+
+    // 3. Tiến hành vẽ (Giữ ảnh nét căng, rõ chi tiết)
+    ctx.globalAlpha = 0.95; // Độ rõ 95% để nhìn cực rõ logo trên nền thanh màu
     
     const tImg = tokenImgs[owner];
     if(tImg && tImg.ready){
-      // Nếu đội này đã có file ảnh token-X.png -> In mờ ảnh đó lên ô đất
-      const S = Math.min(tw,th)*0.6;
-      ctx.drawImage(tImg.img, markCx-S/2, markCy-S/2, S, S);
+      // Vẽ ảnh Token thu nhỏ nằm căn giữa ngay trong thanh màu
+      ctx.drawImage(tImg.img, iconX - tSize/2, iconY - tSize/2, tSize, tSize);
     } else {
-      // Nếu chưa có file ảnh -> Fallback về chấm tròn màu đội y như cũ
-      const MR = Math.min(tw,th)*0.24;
-      ctx.beginPath(); ctx.arc(markCx, markCy, MR, 0, Math.PI*2);
+      // Fallback nếu chưa có ảnh: Vẽ chấm tròn nhỏ có viền trắng cho nổi bật
+      ctx.beginPath(); 
+      ctx.arc(iconX, iconY, tSize/2.2, 0, Math.PI*2);
       ctx.fillStyle = state.players[owner].color;
       ctx.fill();
+      ctx.strokeStyle = "#ffffff"; 
+      ctx.lineWidth = 1; 
+      ctx.stroke();
     }
     ctx.restore();
   }
