@@ -1240,7 +1240,25 @@ function drawCenterLogo(){
   const curPlayer = curId !== null ? state.players[curId] : null;
 
   // ── Lượt của ai ──
-  
+  if(curPlayer){
+   // ── In ảnh Token của người chơi thay cho chấm tròn ──
+    const tImg = tokenImgs[curPlayer.id];
+    const tSize = r * 0.22; // Điều chỉnh số 0.22 nếu muốn icon to/nhỏ hơn
+    const posX = cx - r * 0.18;
+    const posY = cy - r * 0.32;
+
+    ctx.globalAlpha = 1;
+    if (tImg && tImg.ready) {
+      // Vẽ ảnh Token nếu đã load xong
+      ctx.drawImage(tImg.img, posX - tSize/2, posY - tSize/2, tSize, tSize);
+    } else {
+      // Fallback: Nếu chưa load được ảnh thì vẽ chấm tròn màu cũ
+      ctx.beginPath();
+      ctx.arc(posX, posY, tSize/2.2, 0, Math.PI*2);
+      ctx.fillStyle = curPlayer.color;
+      ctx.fill();
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+    }
 
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#2d2150";
@@ -1251,18 +1269,17 @@ function drawCenterLogo(){
     ctx.fillText(curPlayer.name, cx, cy - r*0.28);
   }
 
-  // ── Countdown ──
+  // ── Countdown ── (đã bỏ đếm ngược roll 10s — chỉ còn đếm ngược mua đất 15s)
   const hasBuy  = state.pendingBuyTile !== null && state.pendingBuyExpireAt;
-  const hasRoll = !hasBuy && state.turnStartedAt;
 
-  if(hasBuy || hasRoll){
-    const total  = hasBuy ? BUY_TIMEOUT : ROLL_TIMEOUT;
-    const expire = hasBuy ? state.pendingBuyExpireAt : (state.turnStartedAt + ROLL_TIMEOUT);
+  if(hasBuy){
+    const total  = BUY_TIMEOUT;
+    const expire = state.pendingBuyExpireAt;
     const remain = Math.max(0, expire - now);
     const pct    = remain / total; // 1.0 → 0.0
     const secs   = Math.ceil(remain / 1000);
-    const label  = hasBuy ? "⏱ Mua đất" : "⏱ Roll";
-    const color  = hasBuy ? "#7b3ff2" : "#e11d48";
+    const label  = "⏱ Mua đất";
+    const color  = "#7b3ff2";
     const barR   = r * 0.55;
     const barY   = cy + r * 0.10;
     const barH   = r * 0.10;
