@@ -1209,16 +1209,16 @@ function drawCenterLogo(){
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  // 1. Tên game (Đẩy lên cao hơn)
+  // 1. Tên game (Đẩy lên rất cao: từ 0.75 thành 0.85)
   ctx.globalAlpha = 0.6;
   ctx.fillStyle = "#5c4324";
   ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*0.75);
+  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*0.85);
 
-  // 2. Dòng NHÓM mới thêm (Thay tên ở đây)
+  // 2. Dòng NHÓM (Đẩy lên cao hơn: từ 0.60 thành 0.70)
   ctx.fillStyle = "#2d2150";
   ctx.font = `700 ${Math.max(12, r*0.12)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("NHÓM: Đang cập nhật", cx, cy - r*0.60);
+  ctx.fillText("NHÓM: Đang cập nhật", cx, cy - r*0.70);
 
   ctx.restore();
 
