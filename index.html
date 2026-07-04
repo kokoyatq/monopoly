@@ -200,7 +200,7 @@
 <div id="boardWrap">
   <div id="canvasWrap">
     <canvas id="bgParticles" width="1140" height="1140"></canvas>
-    <canvas id="boardCanvas" width="880" height="880"></canvas>
+    <canvas id="boardCanvas" width="760" height="760"></canvas>
     <div id="diceOverlay"><div class="dice-stage" id="diceStage"></div></div>
     <div id="diceSumBadge"></div>
     <div id="weakBanner"></div>
@@ -421,6 +421,23 @@ function buildTileRects(){
 }
 const positions = buildTileRects();
 const displayedPos = {};
+
+// ── Setup canvas theo đúng BOARD_W + devicePixelRatio để bàn cờ luôn NÉT (retina/HiDPI)
+// và luôn CĂN GIỮA khớp 100% với nền gỗ bo tròn (không còn lệch trái/lệch trên nữa).
+// Mọi lệnh vẽ trong code vẫn dùng toạ độ logic 0..BOARD_W như cũ, ctx.setTransform lo phần scale.
+function setupCanvasHiDPI(){
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = BOARD_W * dpr;
+  canvas.height = BOARD_W * dpr;
+  canvas.style.width  = BOARD_W + "px";
+  canvas.style.height = BOARD_W + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+setupCanvasHiDPI();
+window.addEventListener("resize", ()=>{
+  setupCanvasHiDPI();
+  if(state) renderBoard();
+});
 // CELL kept as compat alias for places that still reference it (token radius, float text size)
 const CELL = SW;
 const LAND_COLOR_SOLID = {NN:"#4ade80", TN:"#fb923c", DV:"#c084fc"};
@@ -506,17 +523,38 @@ function runRemoteSequence(prevState, pendingEvents){
   const to = state.players[movedId].position;
   sequenceLocked = true;
   updateRollButton();
-  showDiceOnBoard(d1, d2, ()=>{
-    animateTokenMove(movedId, from, to, ()=>{
-      sequenceLocked = false;
-      renderAll();
-      // Roll/di chuyển xong xuôi rồi mới hiện banner + hiệu ứng (mua đất, trả thuê, vào tù...)
-      if(pendingEvents){
-        queueEventBanners(pendingEvents);
-        applyBoardFx(pendingEvents, to);
+  // An toàn: nếu vì lý do bất kỳ (lỗi JS, tab bị treo throttling...) mà callback bên trong
+  // không bao giờ chạy tới, watchdog này sẽ tự mở khoá lại sau tối đa 8s để bàn cờ + 2 đồng hồ
+  // đếm ngược không bao giờ bị "treo" vĩnh viễn.
+  const watchdog = setTimeout(()=>{
+    if(sequenceLocked){ sequenceLocked = false; renderAll(); }
+  }, 8000);
+  try{
+    showDiceOnBoard(d1, d2, ()=>{
+      try{
+        animateTokenMove(movedId, from, to, ()=>{
+          clearTimeout(watchdog);
+          sequenceLocked = false;
+          renderAll();
+          // Roll/di chuyển xong xuôi rồi mới hiện banner + hiệu ứng (mua đất, trả thuê, vào tù...)
+          if(pendingEvents){
+            queueEventBanners(pendingEvents);
+            applyBoardFx(pendingEvents, to);
+          }
+        });
+      }catch(e){
+        console.error("animateTokenMove lỗi:", e);
+        clearTimeout(watchdog);
+        sequenceLocked = false;
+        renderAll();
       }
     });
-  });
+  }catch(e){
+    console.error("showDiceOnBoard lỗi:", e);
+    clearTimeout(watchdog);
+    sequenceLocked = false;
+    renderAll();
+  }
 }
 
 function tryAutoRejoin(){
@@ -732,14 +770,23 @@ document.getElementById("btnClaimCancel").addEventListener("click", ()=>{
 function fmtTime(s){
   return Math.floor(s/60).toString().padStart(2,"0")+":"+((s%60).toString().padStart(2,"0"));
 }
+// Đồng hồ chạy THẬT theo thời gian, không phụ thuộc việc có state mới đồng bộ về hay không.
+// gameStartedAt là mốc epoch-ms cố định set 1 lần khi bắt đầu game (xem game-data.js).
+function getLiveElapsedSec(){
+  if(!state) return 0;
+  if(state.gameStarted && state.gameStartedAt){
+    return Math.max(0, Math.floor((Date.now() - state.gameStartedAt)/1000));
+  }
+  return state.elapsedSec || 0;
+}
 
 /* ─── Render all ─── */
 function renderAll(){
   if(!state) return;
   renderLobby();
-  document.getElementById("timer").textContent    = fmtTime(state.elapsedSec);
+  document.getElementById("timer").textContent    = fmtTime(getLiveElapsedSec());
   document.getElementById("phaseName").textContent = state.phase!==undefined ? PHASE_NAMES[state.phase] : "-";
-  const suggested = state.phase < PHASE_SUGGEST_SECONDS.length && state.elapsedSec >= PHASE_SUGGEST_SECONDS[state.phase];
+  const suggested = state.phase < PHASE_SUGGEST_SECONDS.length && getLiveElapsedSec() >= PHASE_SUGGEST_SECONDS[state.phase];
   document.getElementById("phaseBar").classList.toggle("suggest", !!suggested);
   document.getElementById("suggestText").style.display = suggested ? "inline" : "none";
   // Cập nhật lượt hiện tại ở panel phải
@@ -1198,6 +1245,15 @@ function ambientLoop(ts){
 }
 requestAnimationFrame(ambientLoop);
 
+/* ─── Đồng hồ tổng — chạy thật mỗi giây, không chờ state mới từ server ─── */
+setInterval(()=>{
+  if(!state) return;
+  document.getElementById("timer").textContent = fmtTime(getLiveElapsedSec());
+  const suggested = state.phase < PHASE_SUGGEST_SECONDS.length && getLiveElapsedSec() >= PHASE_SUGGEST_SECONDS[state.phase];
+  document.getElementById("phaseBar").classList.toggle("suggest", !!suggested);
+  document.getElementById("suggestText").style.display = suggested ? "inline" : "none";
+}, 1000);
+
 /* ─── Đếm ngược 2 timer: mua đất (15s) và roll (10s) ─── */
 const BUY_TIMEOUT  = 15000;
 const ROLL_TIMEOUT = 10000;
@@ -1419,28 +1475,46 @@ document.getElementById("btnRoll").addEventListener("click", async ()=>{
   if(state.lastEventId) lastSeenEventId = state.lastEventId;
 
   // Hiện xúc xắc 4s → animate token → mở modal phù hợp theo loại ô
-  showDiceOnBoard(d1, d2, ()=>{
-    animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
-      sequenceLocked=false;
-      renderAll();
-      queueEventBanners(result.events);
-      applyBoardFx(result.events, newPos);
-      const landedTile = result.state.tiles[newPos];
-      if(!isDisplayMode){
-        if(result.state.pendingBuyTile !== undefined && result.state.pendingBuyTile !== null){
-          window.__pendingBuy = { idx: result.state.pendingBuyTile };
-          openBuyModal(result.state.pendingBuyTile);
-        } else if(landedTile && landedTile.type === "tax"){
-          taxModal.classList.add("show");
-        } else if(landedTile && landedTile.type === "state"){
-          stateModal.classList.add("show");
-        } else if(landedTile && landedTile.type === "property" && landedTile.owner !== null && landedTile.owner !== myPlayerId){
-          const rent = (landedTile.rent||0) * (landedTile.rentMultiplier||1);
-          openRentModal(landedTile.name, result.state.players[landedTile.owner].name, rent);
-        }
+  const rollWatchdog = setTimeout(()=>{
+    if(sequenceLocked){ sequenceLocked=false; renderAll(); }
+  }, 8000);
+  try{
+    showDiceOnBoard(d1, d2, ()=>{
+      try{
+        animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
+          clearTimeout(rollWatchdog);
+          sequenceLocked=false;
+          renderAll();
+          queueEventBanners(result.events);
+          applyBoardFx(result.events, newPos);
+          const landedTile = result.state.tiles[newPos];
+          if(!isDisplayMode){
+            if(result.state.pendingBuyTile !== undefined && result.state.pendingBuyTile !== null){
+              window.__pendingBuy = { idx: result.state.pendingBuyTile };
+              openBuyModal(result.state.pendingBuyTile);
+            } else if(landedTile && landedTile.type === "tax"){
+              taxModal.classList.add("show");
+            } else if(landedTile && landedTile.type === "state"){
+              stateModal.classList.add("show");
+            } else if(landedTile && landedTile.type === "property" && landedTile.owner !== null && landedTile.owner !== myPlayerId){
+              const rent = (landedTile.rent||0) * (landedTile.rentMultiplier||1);
+              openRentModal(landedTile.name, result.state.players[landedTile.owner].name, rent);
+            }
+          }
+        });
+      }catch(e){
+        console.error("animateTokenMove lỗi:", e);
+        clearTimeout(rollWatchdog);
+        sequenceLocked=false;
+        renderAll();
       }
     });
-  });
+  }catch(e){
+    console.error("showDiceOnBoard lỗi:", e);
+    clearTimeout(rollWatchdog);
+    sequenceLocked=false;
+    renderAll();
+  }
 }); // ← đóng event listener đúng chỗ
 
 /* ─── Helpers lượt đi (dùng cho mutateState trong buy/jail modal) ─── */
@@ -1564,35 +1638,54 @@ document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
   const newPos = state.players[myPlayerId].position;
   const isDouble = d1j === d2j;
 
-  showDiceOnBoard(d1j,d2j, ()=>{
-    // Đổ đôi: ra tù VÀ đi tiếp theo số điểm, nên phải animate token di chuyển tới ô mới
-    if(isDouble && newPos !== oldPos){
-      animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
+  const jailWatchdog = setTimeout(()=>{
+    if(sequenceLocked){ sequenceLocked=false; renderAll(); }
+  }, 8000);
+  try{
+    showDiceOnBoard(d1j,d2j, ()=>{
+      // Đổ đôi: ra tù VÀ đi tiếp theo số điểm, nên phải animate token di chuyển tới ô mới
+      if(isDouble && newPos !== oldPos){
+        try{
+          animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
+            clearTimeout(jailWatchdog);
+            sequenceLocked=false;
+            renderAll();
+            queueEventBanners(result.events);
+            applyBoardFx(result.events, newPos);
+            const landedTile = state.tiles[newPos];
+            if(!isDisplayMode){
+              if(state.pendingBuyTile !== undefined && state.pendingBuyTile !== null){
+                window.__pendingBuy = { idx: state.pendingBuyTile };
+                openBuyModal(state.pendingBuyTile);
+              } else if(landedTile && landedTile.type === "tax"){
+                taxModal.classList.add("show");
+              } else if(landedTile && landedTile.type === "state"){
+                stateModal.classList.add("show");
+              } else if(landedTile && landedTile.type === "property" && landedTile.owner !== null && landedTile.owner !== myPlayerId){
+                const rent = (landedTile.rent||0) * (landedTile.rentMultiplier||1);
+                openRentModal(landedTile.name, state.players[landedTile.owner].name, rent);
+              }
+            }
+          });
+        }catch(e){
+          console.error("animateTokenMove lỗi:", e);
+          clearTimeout(jailWatchdog);
+          sequenceLocked=false;
+          renderAll();
+        }
+      } else {
+        clearTimeout(jailWatchdog);
         sequenceLocked=false;
         renderAll();
         queueEventBanners(result.events);
-        applyBoardFx(result.events, newPos);
-        const landedTile = state.tiles[newPos];
-        if(!isDisplayMode){
-          if(state.pendingBuyTile !== undefined && state.pendingBuyTile !== null){
-            window.__pendingBuy = { idx: state.pendingBuyTile };
-            openBuyModal(state.pendingBuyTile);
-          } else if(landedTile && landedTile.type === "tax"){
-            taxModal.classList.add("show");
-          } else if(landedTile && landedTile.type === "state"){
-            stateModal.classList.add("show");
-          } else if(landedTile && landedTile.type === "property" && landedTile.owner !== null && landedTile.owner !== myPlayerId){
-            const rent = (landedTile.rent||0) * (landedTile.rentMultiplier||1);
-            openRentModal(landedTile.name, state.players[landedTile.owner].name, rent);
-          }
-        }
-      });
-    } else {
-      sequenceLocked=false;
-      renderAll();
-      queueEventBanners(result.events);
-    }
-  });
+      }
+    });
+  }catch(e){
+    console.error("showDiceOnBoard lỗi:", e);
+    clearTimeout(jailWatchdog);
+    sequenceLocked=false;
+    renderAll();
+  }
 });
 document.getElementById("btnJailPay").addEventListener("click", async ()=>{
   if(sequenceLocked) return;
