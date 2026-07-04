@@ -288,6 +288,7 @@ document.getElementById("btnRandomOrder").addEventListener("click", async ()=>{
     s.turnOrderLocked = true;
     s.gameStarted = true;
     s.gameStartedAt = Date.now();  // mốc thời gian để tick() tính elapsedSec chính xác
+    s.turnStartedAt = Date.now();  // mốc bắt đầu đếm ngược 10s roll cho lượt đi đầu tiên
     addLog(s, `🎲 MC đã random & khóa thứ tự đi (${joined.length} đội): ${order.map(id=>s.players[id].name).join(" → ")}`);
     addLog(s, `Hỏi: có đội nào muốn nộp 50$ để đi trước không?`);
   });
@@ -306,6 +307,7 @@ document.getElementById("btnConfirmPriority").addEventListener("click", async ()
     }
     s.priorityUsed = true;
     s.currentTurnPos = 0;
+    s.turnStartedAt = Date.now();  // reset mốc đếm ngược 10s cho đúng người đi đầu (có thể đã đổi do phí ưu tiên)
   });
 });
 
