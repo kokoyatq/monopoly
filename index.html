@@ -678,7 +678,7 @@ function animateTokenMove(playerId, from, to, onDone){
     ctx.shadowColor="rgba(0,0,0,.4)"; ctx.shadowBlur=4; ctx.shadowOffsetY=2;
    const tImg = tokenImgs[playerId];
 if (tImg && tImg.ready) {
-  const tSize = TOKEN_R * 2.5;
+  const tSize = TOKEN_R * 4;
   ctx.drawImage(tImg.img, currentX - tSize/2, currentY - tSize/2, tSize, tSize);
 } else {
   ctx.beginPath(); ctx.fillStyle = player.color;
@@ -1127,7 +1127,7 @@ function drawTokens(ts){
       ctx.shadowColor="rgba(0,0,0,.4)"; ctx.shadowBlur=4; ctx.shadowOffsetY=2;
       const tImg = tokenImgs[p.id];
 if (tImg && tImg.ready) {
-  const tSize = TOKEN_R * 2.5;
+  const tSize = TOKEN_R * 4;
   ctx.drawImage(tImg.img, cx - tSize/2, cy - tSize/2, tSize, tSize);
 } else {
   ctx.beginPath(); ctx.fillStyle = p.color;
