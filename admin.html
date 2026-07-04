@@ -161,15 +161,17 @@ function renderPhaseInfo(){
     ⏱ <b>${fmtTime(state.elapsedSec)}</b> &nbsp; | &nbsp;
     Giai đoạn: <b>${PHASE_NAMES[state.phase]}</b> &nbsp;
     ${suggested ? `<span style="color:var(--accent)">⏰ Gợi ý: nên chuyển giai đoạn tiếp theo</span>` : ""} &nbsp; | &nbsp;
-    Thứ tự đi: ${state.turnOrderLocked ? state.turnOrder.map(id=>state.players[id].name).join(" → ") : "<i>chưa random</i>"}
-    ${state.turnOrderLocked ? `&nbsp; | &nbsp; Đang đi: <b>${state.players[currentPlayerId(state)].name}</b>` : ""}
+    Thứ tự đi: ${state.turnOrder && state.turnOrder.length>0 ? state.turnOrder.map(id=>state.players[id].name).join(" → ") : "<i>chưa random</i>"}
+    ${state.turnOrderLocked
+        ? `&nbsp; | &nbsp; Đang đi: <b>${state.players[currentPlayerId(state)].name}</b>`
+        : (state.turnOrder && state.turnOrder.length>0 ? `&nbsp; | &nbsp; <i>⏳ Đang chờ MC xác nhận ưu tiên trước khi bắt đầu...</i>` : "")}
   `;
-  document.getElementById("btnRandomOrder").disabled = state.turnOrderLocked;
+  document.getElementById("btnRandomOrder").disabled = state.turnOrderLocked || (state.turnOrder && state.turnOrder.length>0);
 }
 
 function renderPriorityPanel(){
   const panel = document.getElementById("priorityPanel");
-  if(state.turnOrderLocked && !state.priorityUsed){
+  if(state.turnOrder && state.turnOrder.length > 0 && !state.turnOrderLocked && !state.priorityUsed){
     panel.style.display = "block";
   } else {
     panel.style.display = "none";
@@ -285,11 +287,9 @@ document.getElementById("btnRandomOrder").addEventListener("click", async ()=>{
       [order[i],order[j]] = [order[j],order[i]];
     }
     s.turnOrder = order;
-    s.turnOrderLocked = true;
-    s.gameStarted = true;
-    s.gameStartedAt = Date.now();  // mốc thời gian để tick() tính elapsedSec chính xác
-    s.turnStartedAt = Date.now();  // mốc bắt đầu đếm ngược 10s roll cho lượt đi đầu tiên
-    addLog(s, `🎲 MC đã random & khóa thứ tự đi (${joined.length} đội): ${order.map(id=>s.players[id].name).join(" → ")}`);
+    // CHƯA khóa & CHƯA bắt đầu game ở đây — chờ MC hỏi xong bước ưu tiên (btnConfirmPriority)
+    // mới thực sự khóa thứ tự + bắt đầu tính giờ. Tránh tình trạng bấm Random là game chạy luôn.
+    addLog(s, `🎲 MC đã random thứ tự đi (${joined.length} đội): ${order.map(id=>s.players[id].name).join(" → ")}`);
     addLog(s, `Hỏi: có đội nào muốn nộp 50$ để đi trước không?`);
   });
 });
@@ -307,7 +307,12 @@ document.getElementById("btnConfirmPriority").addEventListener("click", async ()
     }
     s.priorityUsed = true;
     s.currentTurnPos = 0;
-    s.turnStartedAt = Date.now();  // reset mốc đếm ngược 10s cho đúng người đi đầu (có thể đã đổi do phí ưu tiên)
+    // Bước ưu tiên đã xong → BÂY GIỜ mới thực sự khóa thứ tự đi & bắt đầu game
+    s.turnOrderLocked = true;
+    s.gameStarted = true;
+    s.gameStartedAt = Date.now();  // mốc thời gian để tick() tính elapsedSec chính xác
+    s.turnStartedAt = Date.now();  // mốc bắt đầu lượt đi đầu tiên
+    addLog(s, `▶️ Game chính thức bắt đầu!`);
   });
 });
 

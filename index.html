@@ -596,6 +596,7 @@ function runRemoteSequence(prevState, pendingEvents){
 }
 
 function tryAutoRejoin(){
+  if (isDisplayMode) return; // Màn hình trình chiếu KHÔNG được tự nhận lại làm 1 đội chơi nào
   const saved = localStorage.getItem(LOBBY_KEY);
   if(!saved) return;
   try{
@@ -1345,9 +1346,11 @@ setInterval(()=>{
   document.getElementById("suggestText").style.display = suggested ? "inline" : "none";
 }, 1000);
 
-/* ─── Đếm ngược 2 timer: mua đất (15s) và roll (10s) ─── */
+/* ─── Đếm ngược mua đất (15s) ─── */
 const BUY_TIMEOUT  = 15000;
-
+// ROLL_TIMEOUT giữ lại để tương thích với các đoạn code cũ tham chiếu tới (drawCenterLogo...),
+// nhưng KHÔNG còn dùng để tự động mất lượt nữa — xem khối setInterval bên dưới.
+const ROLL_TIMEOUT = 10000;
 
 // Server CỐ TÌNH không set pendingBuyExpireAt khi mở màn mua đất — đồng hồ 15s chỉ được phép
 // bắt đầu chạy SAU KHI animation xúc xắc + di chuyển quân cờ tới ô đích đã chạy xong trên màn
@@ -1373,16 +1376,15 @@ async function startBuyTimerIfNeeded(expectedIdx){
 }
 
 // Tự vá (lưới an toàn dự phòng): nếu ván đã khoá thứ tự lượt chơi (turnOrderLocked) nhưng thiếu
-// mốc turnStartedAt / pendingBuyExpireAt — ví dụ do mất kết nối, đóng tab giữa chừng khiến
-// startBuyTimerIfNeeded() phía trên không kịp chạy — thì tự bù lại. Với pendingBuyExpireAt, PHẢI
-// đợi đủ lâu (hơn thời lượng animation tối đa: 4s xúc xắc + tối đa ~6s di chuyển ≈ 10s) trước khi
-// tự vá, để không "cướp" mất thời điểm mà startBuyTimerIfNeeded() lẽ ra sẽ set đúng lúc.
+// mốc pendingBuyExpireAt — ví dụ do mất kết nối, đóng tab giữa chừng khiến startBuyTimerIfNeeded()
+// phía trên không kịp chạy — thì tự bù lại. PHẢI đợi đủ lâu (hơn thời lượng animation tối đa: 4s
+// xúc xắc + tối đa ~6s di chuyển ≈ 10s) trước khi tự vá, để không "cướp" mất thời điểm mà
+// startBuyTimerIfNeeded() lẽ ra sẽ set đúng lúc.
 const BUY_FIX_GRACE_MS = 12000;
 let buyFixMissingSince = null;
 let healingTimers = false;
 async function selfHealTimers(){
   if(!state || !state.turnOrderLocked || state.gameEnded || healingTimers) return;
-  const needsRollFix = (state.pendingBuyTile === null || state.pendingBuyTile === undefined) && !state.turnStartedAt;
   const needsBuyFixRaw = state.pendingBuyTile !== null && state.pendingBuyTile !== undefined && !state.pendingBuyExpireAt;
 
   let needsBuyFix = false;
@@ -1393,13 +1395,10 @@ async function selfHealTimers(){
     buyFixMissingSince = null;
   }
 
-  if(!needsRollFix && !needsBuyFix) return;
+  if(!needsBuyFix) return;
   healingTimers = true;
   try{
     const fixed = await mutateState(s=>{
-      if((s.pendingBuyTile === null || s.pendingBuyTile === undefined) && !s.turnStartedAt){
-        s.turnStartedAt = Date.now();
-      }
       if(needsBuyFix && s.pendingBuyTile !== null && s.pendingBuyTile !== undefined && !s.pendingBuyExpireAt){
         s.pendingBuyExpireAt = Date.now() + BUY_TIMEOUT;
       }
@@ -1432,29 +1431,9 @@ setInterval(()=>{
     if(buyNumEl) buyNumEl.textContent = "15s";
   }
 
-  // ── Timer roll (10s) ──
-  const rollWrap  = document.getElementById("rollCountdownWrap");
-  const rollBar   = document.getElementById("rollCountdownBar");
-  const rollNumEl = document.getElementById("rollCountdownNum");
-  const canRoll   = isMyTurn && !sequenceLocked && state.pendingBuyTile === null
-                    && curId !== null && state.players[curId]?.jailTurns === 0;
-  if(rollWrap) rollWrap.style.display = canRoll ? "block" : "none";
-  if(canRoll && state.turnStartedAt){
-    const remain = Math.max(0, state.turnStartedAt + ROLL_TIMEOUT - now);
-    const pct    = (remain / ROLL_TIMEOUT) * 100;
-    if(rollBar)   rollBar.style.width = pct + "%";
-    if(rollNumEl) rollNumEl.textContent = Math.ceil(remain/1000) + "s";
-    if(remain === 0 && !sequenceLocked){
-      sequenceLocked = true; updateRollButton();
-      gameAction(GAME_ID, myPlayerId, "skip-turn")
-        .then(r=>{ state=r.state; if(state.lastEventId) lastSeenEventId=state.lastEventId; })
-        .catch(()=>{})
-        .finally(()=>{ sequenceLocked=false; renderAll(); });
-    }
-  } else {
-    if(rollBar)   rollBar.style.width = "100%";
-    if(rollNumEl) rollNumEl.textContent = "10s";
-  }
+  // ── Timer roll: ĐÃ BỎ auto-skip lượt sau 10s theo yêu cầu — chỉ ẩn khối UI đếm ngược ──
+  const rollWrap = document.getElementById("rollCountdownWrap");
+  if(rollWrap) rollWrap.style.display = "none";
 }, 400);
 
 /* ─── Particle nền phía sau bàn cờ — canvas RIÊNG BIỆT hoàn toàn, không đụng tới
@@ -1539,7 +1518,7 @@ function renderPlayers(){
     let statusText="";
     if(p.status==="eliminated") statusText=" (Đã bị loại)";
     div.innerHTML=`<span class="dot" style="background:${p.color}"></span><b>${p.name}</b>${statusText} ${tags}<br/>
-  💰 ${p.money.toLocaleString()}$ &nbsp; 🏠 ${p.properties.length} ô &nbsp; Σ ${totalAssets(state,p).toLocaleString()}$`;
+      💰 ${p.money.toLocaleString()}$ &nbsp; 🏠 ${p.properties.length} ô &nbsp; Σ ${totalAssets(state,p).toLocaleString()}$`;
     wrap.appendChild(div);
   });
 }
