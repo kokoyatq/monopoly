@@ -942,9 +942,10 @@ function drawTile(tile, idx, pos, ts){
   if(owner!==null){
     ctx.save();
     
-    // 1. Tính toán kích thước icon dựa trên độ dày BAND của thanh màu
-    // (Để icon nhỏ hơn BAND một chút cho đẹp, bằng 80% độ dày thanh màu)
-    const tSize = BAND * 0.8; 
+  // ĐỔI CHỖ NÀY: Ép cứng kích thước icon to hẳn lên (ví dụ: 24px hoặc 28px)
+    // Bạn có thể tăng giảm số 26 này tùy ý để vừa mắt nhé!
+    const tSize = 26; 
+    
     let iconX = tx + tw/2;
     let iconY = ty + th/2;
 
