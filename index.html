@@ -145,20 +145,20 @@
   #eventBanner.show{display:block; opacity:1; transform:translate(-50%,-50%) scale(1);}
 
   #boardLogPanel{
-    position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
-    width:88%; max-width:620px; z-index:22; pointer-events:none;
-    background:rgba(20,10,45,.62); border-radius:14px; padding:8px 16px;
-    box-shadow:0 6px 20px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.08);
+    position:absolute; bottom:15%; left:50%; transform:translateX(-50%);
+    width:56%; max-width:360px; z-index:22; pointer-events:none;
+    background:rgba(20,10,45,.62); border-radius:12px; padding:6px 12px;
+    box-shadow:0 4px 14px rgba(0,0,0,.3), inset 0 0 0 1px rgba(255,255,255,.08);
   }
   #boardLogList{
-    display:flex; flex-direction:column; gap:3px; max-height:88px; overflow:hidden;
-    font-family:'Nunito',sans-serif; font-size:12px; font-weight:700; color:#fff;
+    display:flex; flex-direction:column; gap:2px; max-height:52px; overflow:hidden;
+    font-family:'Nunito',sans-serif; font-size:10px; font-weight:700; color:#fff;
   }
   #boardLogList p{
     margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    text-shadow:0 1px 3px rgba(0,0,0,.7); opacity:.65;
+    text-shadow:0 1px 2px rgba(0,0,0,.7); opacity:.6;
   }
-  #boardLogList p:first-child{opacity:1; font-size:13px; color:#ffd23f;}
+  #boardLogList p:first-child{opacity:1; font-size:11px; color:#ffd23f;}
 
   #sidebar{
     width:360px; background:var(--panel); color:var(--panel-text);
@@ -1531,7 +1531,7 @@ function renderLog(){
 function renderBoardLog(){
   const el = document.getElementById("boardLogList");
   if(!el || !state) return;
-  el.innerHTML = state.log.slice(0,5).map(l=>`<p>${l}</p>`).join("");
+  el.innerHTML = state.log.slice(0,3).map(l=>`<p>${l}</p>`).join("");
 }
 function updateRollButton(){
   const btn=document.getElementById("btnRoll");
