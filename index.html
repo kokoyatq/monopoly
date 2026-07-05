@@ -136,13 +136,29 @@
     position:absolute; top:50%; left:50%;
     transform:translate(-50%,-50%) scale(.85);
     background:linear-gradient(135deg,#7b3ff2,#4c1d95);
-    color:#fff; font-family:'Baloo 2',sans-serif; font-weight:800; font-size:19px;
+    color:#fff; font-family:'Baloo 2',sans-serif; font-weight:800; font-size:17px;
     padding:14px 28px; border-radius:18px; z-index:40; pointer-events:none;
-    box-shadow:0 10px 30px rgba(0,0,0,.5); white-space:nowrap; text-align:center;
-    opacity:0; display:none; max-width:92%; text-overflow:ellipsis; overflow:hidden;
+    box-shadow:0 10px 30px rgba(0,0,0,.5); white-space:normal; text-align:center;
+    line-height:1.35; opacity:0; display:none; max-width:70%;
     transition:opacity .25s, transform .25s;
   }
   #eventBanner.show{display:block; opacity:1; transform:translate(-50%,-50%) scale(1);}
+
+  #boardLogPanel{
+    position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+    width:88%; max-width:620px; z-index:22; pointer-events:none;
+    background:rgba(20,10,45,.62); border-radius:14px; padding:8px 16px;
+    box-shadow:0 6px 20px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.08);
+  }
+  #boardLogList{
+    display:flex; flex-direction:column; gap:3px; max-height:88px; overflow:hidden;
+    font-family:'Nunito',sans-serif; font-size:12px; font-weight:700; color:#fff;
+  }
+  #boardLogList p{
+    margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    text-shadow:0 1px 3px rgba(0,0,0,.7); opacity:.65;
+  }
+  #boardLogList p:first-child{opacity:1; font-size:13px; color:#ffd23f;}
 
   #sidebar{
     width:360px; background:var(--panel); color:var(--panel-text);
@@ -219,6 +235,7 @@
     <div id="diceSumBadge"></div>
     <div id="weakBanner"></div>
     <div id="eventBanner"></div>
+    <div id="boardLogPanel"><div id="boardLogList"></div></div>
   </div>
   <div id="boardRightPanel">
     <div id="phaseBar">
@@ -706,10 +723,11 @@ function playNextEventBanner(){
   const text = eventBannerQueue.shift();
   banner.textContent = text;
   banner.classList.add("show");
+  const showMs = text.length > 40 ? 3400 : 2200;
   setTimeout(()=>{
     banner.classList.remove("show");
     setTimeout(playNextEventBanner, 220);
-  }, 2200);
+  }, showMs);
 }
 
 /* ─── Cảnh báo doanh nghiệp yếu ─── */
@@ -1221,11 +1239,13 @@ function drawCenterLogo(){
   ctx.save();
   ctx.textAlign="center"; ctx.textBaseline="middle";
 
-  // Tên game nhỏ phía trên
+  // Tên game nhỏ phía trên (đẩy lên cao hơn) + dòng tên nhóm bên dưới
   ctx.globalAlpha = 0.45;
   ctx.fillStyle = "#5c4324";
   ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*0.72);
+  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*0.86);
+  ctx.font = `700 ${Math.max(10, r*0.095)}px 'Baloo 2', sans-serif`;
+  ctx.fillText("NHÓM: MNL122", cx, cy - r*0.70);
 
   if(!state || !state.turnOrderLocked || state.gameEnded){
     // Chưa bắt đầu — chỉ hiện logo
@@ -1241,25 +1261,6 @@ function drawCenterLogo(){
 
   // ── Lượt của ai ──
   if(curPlayer){
-   // ── In ảnh Token của người chơi thay cho chấm tròn ──
-    const tImg = tokenImgs[curPlayer.id];
-    const tSize = r * 0.22; // Điều chỉnh số 0.22 nếu muốn icon to/nhỏ hơn
-    const posX = cx - r * 0.18;
-    const posY = cy - r * 0.32;
-
-    ctx.globalAlpha = 1;
-    if (tImg && tImg.ready) {
-      // Vẽ ảnh Token nếu đã load xong
-      ctx.drawImage(tImg.img, posX - tSize/2, posY - tSize/2, tSize, tSize);
-    } else {
-      // Fallback: Nếu chưa load được ảnh thì vẽ chấm tròn màu cũ
-      ctx.beginPath();
-      ctx.arc(posX, posY, tSize/2.2, 0, Math.PI*2);
-      ctx.fillStyle = curPlayer.color;
-      ctx.fill();
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
-    }
-
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#2d2150";
     ctx.font = `700 ${Math.max(13, r*0.155)}px 'Baloo 2', sans-serif`;
@@ -1525,6 +1526,12 @@ function renderLog(){
   const el=document.getElementById("log");
   el.innerHTML=state.log.map(l=>`<p>${l}</p>`).join("");
   el.scrollTop=0;
+  renderBoardLog();
+}
+function renderBoardLog(){
+  const el = document.getElementById("boardLogList");
+  if(!el || !state) return;
+  el.innerHTML = state.log.slice(0,5).map(l=>`<p>${l}</p>`).join("");
 }
 function updateRollButton(){
   const btn=document.getElementById("btnRoll");
@@ -1532,8 +1539,13 @@ function updateRollButton(){
   if(!state.turnOrderLocked||state.gameEnded||sequenceLocked){ btn.disabled=true; return; }
   const curId=currentPlayerId(state);
   const isMyTurn=myPlayerId===curId;
-  btn.disabled=!isMyTurn;
-  btn.textContent=isMyTurn?"🎲🎲 Đổ xúc xắc (lượt của bạn!)":`🎲🎲 Đang chờ ${state.players[curId]?.name||""}`;
+  const buyPending = state.pendingBuyTile !== null && state.pendingBuyTile !== undefined;
+  btn.disabled = !isMyTurn || buyPending;
+  if(buyPending){
+    btn.textContent = isMyTurn ? "⏳ Hãy quyết định mua đất trước..." : `⏳ Đang chờ ${state.players[curId]?.name||""} quyết định mua đất`;
+  } else {
+    btn.textContent = isMyTurn ? "🎲🎲 Đổ xúc xắc (lượt của bạn!)" : `🎲🎲 Đang chờ ${state.players[curId]?.name||""}`;
+  }
   if(isMyTurn&&state.players[curId].jailTurns>0&&!jailModal.classList.contains("show")) openJailModal();
 }
 function renderResultModal(){
