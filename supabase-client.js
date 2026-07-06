@@ -62,3 +62,58 @@ async function gameAction(roomId, playerId, action) {
 async function rollDice(roomId, playerId) {
   return gameAction(roomId, playerId, "roll");
 }
+
+/* ============================================================
+   PRESENCE — biết ai đang THỰC SỰ mở kết nối tới ván này.
+   ------------------------------------------------------------
+   QUAN TRỌNG: KHÔNG dùng mutateState() để làm "heartbeat" (ví dụ tự ghi
+   player.lastPing mỗi vài giây) — mutateState()/saveState() ở trên KHÔNG hề
+   check cột "version" (chỉ Edge Function roll-dice mới có optimistic-lock
+   thật). Nếu heartbeat ghi qua mutateState() lặp lại liên tục, có rủi ro
+   THẬT: heartbeat đọc state cũ → 1 hành động roll/mua đất khác vừa ghi state
+   mới qua Edge Function → heartbeat ghi tiếp bản CŨ nó vừa đọc → xoá mất
+   hành động roll/mua đất đó. Presence dưới đây KHÔNG đụng vào bảng `games`
+   chút nào nên tránh hẳn được rủi ro trên, và phát hiện mất kết nối chính
+   xác hơn (dựa vào việc socket có đang mở hay không, không phải đoán qua
+   timeout của heartbeat tự ghi).
+   ============================================================ */
+const presenceChannel = supabaseClient.channel(`presence-${GAME_ID}`);
+let presenceSubscribed = false;
+let myTrackedPlayerId = null;
+
+function ensurePresenceSubscribed(){
+  if(presenceSubscribed) return;
+  presenceSubscribed = true;
+  presenceChannel.subscribe(async (status)=>{
+    if(status === "SUBSCRIBED" && myTrackedPlayerId !== null){
+      await presenceChannel.track({ playerId: myTrackedPlayerId, at: Date.now() });
+    }
+  });
+}
+
+// Gọi từ index.html NGAY SAU KHI biết chắc mình là player nào (claim slot / tự rejoin).
+// An toàn khi gọi lại nhiều lần (ví dụ rejoin) — track() ghi đè presence cũ của chính mình.
+async function trackMyPresence(playerId){
+  myTrackedPlayerId = playerId;
+  ensurePresenceSubscribed();
+  if(presenceChannel.state === "joined"){
+    await presenceChannel.track({ playerId, at: Date.now() });
+  }
+  // Nếu channel chưa join xong thì callback trong ensurePresenceSubscribed() ở trên sẽ tự
+  // track() ngay khi status chuyển thành "SUBSCRIBED", không cần chờ gọi lại hàm này.
+}
+
+// Gọi từ index.html (mọi client, kể cả màn hình trình chiếu) và admin.html để lấy danh sách
+// playerId đang thực sự online. onChange(Set<number>) được gọi mỗi khi có người vào/rời kết nối.
+function subscribeOnlinePlayers(onChange){
+  ensurePresenceSubscribed();
+  const compute = ()=>{
+    const raw = presenceChannel.presenceState(); // { channelKey: [{playerId, at}, ...] }
+    const ids = new Set();
+    Object.values(raw).forEach(entries=>{
+      entries.forEach(e=>{ if(e && e.playerId !== undefined && e.playerId !== null) ids.add(e.playerId); });
+    });
+    onChange(ids);
+  };
+  presenceChannel.on("presence", {event:"sync"}, compute);
+}

@@ -104,6 +104,25 @@
 <script>
 let state = null;
 
+// Trạng thái kết nối lấy từ Supabase Realtime Presence (trackMyPresence/subscribeOnlinePlayers,
+// định nghĩa trong supabase-client.js) — KHÔNG dựa vào 1 field tự ghi kiểu lastPing vào state,
+// vì mutateState() không có optimistic-lock nên ghi lặp lại liên tục có rủi ro ghi đè mất hành
+// động roll/mua đất vừa xảy ra. Presence tách hoàn toàn khỏi bảng games nên tránh được rủi ro đó.
+let onlinePlayerIds = new Set();
+let presenceReady = false; // true sau khi nhận sync đầu tiên — trước đó chưa đủ dữ liệu để kết luận
+function connectionStatus(p){
+  if(!p.joined) return "not_joined";
+  if(!presenceReady) return "unknown";
+  return onlinePlayerIds.has(p.id) ? "online" : "offline";
+}
+function connectionBadge(p){
+  const cs = connectionStatus(p);
+  if(cs==="not_joined") return "";
+  if(cs==="online")  return `<span style="color:var(--good);">🟢 Online</span>`;
+  if(cs==="offline") return `<span style="color:var(--bad);">🔴 Mất kết nối</span>`;
+  return `<span style="opacity:.6;">⚪ Chưa rõ</span>`;
+}
+
 async function init(){
   state = await loadState();
   if(!state || !state.initialized){
@@ -112,6 +131,11 @@ async function init(){
   }
   render();
   subscribeToChanges((newState)=>{ state = newState; render(); });
+  subscribeOnlinePlayers(ids=>{
+    onlinePlayerIds = ids;
+    presenceReady = true;
+    if(state){ renderLobbyStatus(); renderPlayerTable(); } // Presence đổi tức thì → render lại ngay, không cần chờ tick 1s
+  });
   document.getElementById("status").textContent = "✅ Đã kết nối — đồng bộ real-time.";
   setInterval(tick, 1000);
 }
@@ -149,9 +173,13 @@ function renderLobbyStatus(){
   const wrap = document.getElementById("lobbyStatus");
   const joined = joinedPlayers(state);
   wrap.innerHTML = `<p>Đã tham gia: <b>${joined.length}/${NUM_PLAYERS}</b></p>` +
-    state.players.map(p=>`<span style="display:inline-block; margin:3px 6px; padding:3px 8px; border-radius:5px; background:${p.joined?'#14532d':'#334155'};">
-      ${p.joined?'✅':'⬜'} ${p.name}
-    </span>`).join("");
+    state.players.map(p=>{
+      const cs = connectionStatus(p);
+      const dot = !p.joined ? "" : (cs==="online" ? " 🟢" : cs==="offline" ? " 🔴" : " ⚪");
+      return `<span style="display:inline-block; margin:3px 6px; padding:3px 8px; border-radius:5px; background:${p.joined?'#14532d':'#334155'};">
+      ${p.joined?'✅':'⬜'} ${p.name}${dot}
+    </span>`;
+    }).join("");
 }
 
 function renderPhaseInfo(){
@@ -219,24 +247,72 @@ function renderAlerts(){
 function renderPlayerTable(){
   const table = document.getElementById("playerTable");
   const sorted = [...state.players].sort((a,b)=>totalAssets(state,b)-totalAssets(state,a));
-  let html = `<tr><th></th><th>Đội</th><th>Tiền</th><th>Đất NN/TN/DV</th><th>Tổng TS</th><th>Trạng thái</th><th>Cờ</th><th>Phí x2</th></tr>`;
+  let html = `<tr><th></th><th>Đội</th><th>Tiền</th><th>Đất NN/TN/DV</th><th>Tổng TS</th><th>Trạng thái</th><th>Kết nối</th><th>Cờ</th><th>Phí x2</th><th>Hành động</th></tr>`;
   sorted.forEach(p=>{
     const counts={NN:0,TN:0,DV:0};
     p.properties.forEach(i=>{const t=tileInfo(i); if(t.type==="property") counts[t.landType]++;});
     const mono = isMonopoly(state,p);
     const weak = isWeak(state,p);
     const mult = p.properties.length>0 ? state.tiles[p.properties[0]].rentMultiplier : 1;
+    const canKick = p.joined && p.status!=="eliminated";
     html += `<tr>
       <td style="color:${p.color}">●</td><td>${p.name}</td>
       <td>${p.money.toLocaleString()}$</td>
       <td>${counts.NN}/${counts.TN}/${counts.DV}</td>
       <td><b>${totalAssets(state,p).toLocaleString()}$</b></td>
       <td>${p.status==="active"?"✅ Đang chơi":p.status==="shareholder"?"📎 Cổ đông "+Math.round((p.shareholderEquity||0)*100)+"% của "+state.players[p.shareholderOf].name:"💀 Bị loại"}</td>
+      <td>${connectionBadge(p)}</td>
       <td>${weak?'<span class="tag weak">Yếu</span>':""}${mono?'<span class="tag mono">Độc quyền</span>':""}${p.jailTurns>0?`<span class="tag jail">Tù ${p.jailTurns}</span>`:""}</td>
       <td>${mono?`<button class="btn-bad" style="padding:4px 8px;font-size:11px;" onclick="toggleMonopolyRent(${p.id})">${mult===2?"Hủy x2":"Bật x2"}</button>`:"-"}</td>
+      <td>${canKick?`<button class="btn-bad" style="padding:4px 8px;font-size:11px;" onclick="kickPlayer(${p.id})">👢 Kick</button>`:"-"}</td>
     </tr>`;
   });
   table.innerHTML = html;
+}
+
+// Bản sao Y HỆT hàm advanceTurn() thật trong Edge Function (index.ts) — dùng khi admin
+// kick người đang tới lượt, vì thao tác kick đi thẳng qua mutateState (không qua applyAction()
+// ở server) nên phải tự lo đẩy lượt đúng y như logic gốc, kể cả case "hết người còn active".
+function localAdvanceTurn(s){
+  const n = s.turnOrder.length;
+  const anyActive = s.turnOrder.some(id => s.players[id].status === "active");
+  if(!anyActive){
+    s.gameEnded = true;
+    addLog(s, `🏁 Không còn đội nào đang chơi — game tự động kết thúc.`);
+    return;
+  }
+  let pos = s.currentTurnPos;
+  let tries = 0;
+  do{
+    pos = (pos+1) % n;
+    tries++;
+  } while(s.players[s.turnOrder[pos]].status !== "active" && tries <= n);
+  s.currentTurnPos = pos;
+  s.turnStartedAt = Date.now();
+  s.pendingBuyExpireAt = null;
+}
+
+async function kickPlayer(pid){
+  const p = state.players[pid];
+  if(!p || p.status==="eliminated") return;
+  const ok = confirm(`⚠️ Chắc chắn muốn KICK "${p.name}" khỏi game?\nĐội này sẽ bị loại (mất hết đất, không thể chơi tiếp). Dùng khi đội này mất kết nối/vắng mặt thật sự.`);
+  if(!ok) return;
+  await mutateState(s=>{
+    const pl = s.players[pid];
+    if(!pl || pl.status==="eliminated") return;
+    const wasCurrentTurn = s.turnOrderLocked && !s.gameEnded && s.turnOrder && s.turnOrder.length>0 && s.turnOrder[s.currentTurnPos]===pid;
+    pl.status="eliminated";
+    s.tiles.forEach(t=>{ if(t.owner===pid) t.owner=null; });
+    pl.properties=[];
+    pl.jailTurns=0;
+    addLog(s, `👢 MC đã KICK ${pl.name} khỏi game (mất kết nối/vắng mặt).`);
+    // Nếu đúng lượt của người vừa bị kick thì đẩy lượt sang đội tiếp theo còn đang chơi luôn,
+    // dùng ĐÚNG logic advanceTurn() thật ở server (kể cả case hết người active → tự kết thúc game).
+    if(wasCurrentTurn){
+      s.pendingBuyTile = null; // xoá quyết định mua đất còn treo của người vừa bị kick (nếu có)
+      localAdvanceTurn(s);
+    }
+  });
 }
 
 async function toggleMonopolyRent(pid){

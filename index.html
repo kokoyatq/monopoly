@@ -823,6 +823,7 @@ function tryAutoRejoin(){
     const {id, name} = JSON.parse(saved);
     if(state.players[id] && state.players[id].joined && state.players[id].name === name){
       myPlayerId = id;
+      trackMyPresence(myPlayerId);
     }
   }catch(e){}
 }
@@ -1029,6 +1030,7 @@ document.getElementById("btnClaimConfirm").addEventListener("click", async ()=>{
   if(success){
     myPlayerId=selectedSlotForClaim;
     localStorage.setItem(LOBBY_KEY, JSON.stringify({id:myPlayerId, name}));
+    trackMyPresence(myPlayerId);
     document.getElementById("claimBox").style.display="none";
   } else { alert("Ô này vừa có người khác chọn rồi, chọn ô khác nhé!"); }
   selectedSlotForClaim=null;
@@ -1054,6 +1056,11 @@ function getLiveElapsedSec(){
 /* ─── Render all ─── */
 function renderAll(){
   if(!state) return;
+  // Nếu modal mua đất đang mở nhưng state không còn pendingBuyTile nữa (đã tự mua khi hết 15s,
+  // hoặc client khác đã xử lý xong) thì đóng modal lại NGAY, không chờ người chơi tự bấm nút.
+  if(buyModal.classList.contains("show") && (state.pendingBuyTile===null || state.pendingBuyTile===undefined)){
+    window.__pendingBuy=null; buyModal.classList.remove("show");
+  }
   renderLobby();
   document.getElementById("timer").textContent    = fmtTime(getLiveElapsedSec());
   document.getElementById("phaseName").textContent = state.phase!==undefined ? PHASE_NAMES[state.phase] : "-";
@@ -1369,6 +1376,7 @@ function drawTokens(ts){
   const curId = currentPlayerId(state);
   const byTile={};
   state.players.forEach(p=>{
+    if(!p.joined) return; // chưa có ai vào ô này thì không vẽ token (tránh 8 icon dồn hết ở xuất phát)
     if(p.status==="eliminated"||p.status==="shareholder") return;
     if(p.isAnimating) return;
     const pos=displayedPos[p.id]!==undefined?displayedPos[p.id]:p.position;
@@ -1645,6 +1653,22 @@ async function selfHealTimers(){
    Riêng phần mua đất vẫn giữ nguyên 15s như cũ (BUY_TIMEOUT), chỉ khác là giờ AI CŨNG có thể
    là người bấm hộ, không riêng gì máy của người đang tới lượt. */
 const AFK_TIMEOUT = 45000;
+
+/* ─── Presence / phát hiện mất kết nối thật ───
+   Dùng Supabase Realtime Presence (trackMyPresence / subscribeOnlinePlayers, định nghĩa trong
+   supabase-client.js) — KHÔNG dùng mutateState() để tự ghi "còn sống" vào state, vì mutateState()
+   không có optimistic-lock (không check version) nên ghi lặp lại liên tục có rủi ro thật: đọc
+   phải state cũ rồi ghi đè mất 1 hành động roll/mua đất vừa xảy ra qua Edge Function. Presence
+   không đụng vào bảng games nên tránh hẳn rủi ro đó, và phát hiện mất kết nối chính xác hơn vì
+   dựa trên socket thật, không phải đoán qua timeout tự ghi. */
+const DISCONNECT_SKIP_TIMEOUT = 8000;   // mất kết nối thật → chỉ chờ 8s là bỏ lượt/next turn luôn
+let onlinePlayerIds = new Set();
+let presenceReady = false; // true sau khi nhận được lần "sync" đầu tiên — trước đó chưa đủ dữ liệu để kết luận ai offline
+subscribeOnlinePlayers(ids=>{
+  onlinePlayerIds = ids;
+  presenceReady = true;
+});
+
 let afkNudgeInFlight = false;
 async function afkWatchdog(){
   if(!state || !state.turnOrderLocked || state.gameEnded) return;
@@ -1669,10 +1693,18 @@ async function afkWatchdog(){
     return;
   }
 
+  // Xác định người đang tới lượt có đang MẤT KẾT NỐI THẬT hay không (không có mặt trong danh
+  // sách Presence online) — nếu có thì dùng timeout ngắn DISCONNECT_SKIP_TIMEOUT (8s) thay vì
+  // đợi đủ AFK_TIMEOUT (45s) như trường hợp chỉ đang rảnh tay/lag bình thường. Trước khi nhận
+  // được lần sync Presence đầu tiên (presenceReady=false), KHÔNG kết luận offline vội — dùng
+  // timeout thường để tránh bỏ lượt oan lúc trang vừa tải xong.
+  const isOffline = presenceReady && !onlinePlayerIds.has(curId);
+  const turnTimeout = isOffline ? DISCONNECT_SKIP_TIMEOUT : AFK_TIMEOUT;
+
   // 2) Đang ở tù mà im lặng quá lâu (máy họ treo, không mở được modal Tù) → tự chọn "chờ thêm
   //    lượt" — lựa chọn an toàn nhất, không tốn tiền của họ.
   if(curPlayer.jailTurns > 0){
-    if(state.turnStartedAt && now - state.turnStartedAt >= AFK_TIMEOUT){
+    if(state.turnStartedAt && now - state.turnStartedAt >= turnTimeout){
       afkNudgeInFlight = true;
       try{
         const r = await gameAction(GAME_ID, curId, "jail-wait");
@@ -1685,7 +1717,8 @@ async function afkWatchdog(){
   }
 
   // 3) Tới lượt roll mà im lặng quá lâu (lag / mất kết nối / đứng máy) → tự động bỏ lượt.
-  if(state.turnStartedAt && now - state.turnStartedAt >= AFK_TIMEOUT){
+  //    Nếu là mất kết nối thật thì chỉ chờ 8s, còn AFK thường (vẫn online) thì vẫn chờ đủ 45s.
+  if(state.turnStartedAt && now - state.turnStartedAt >= turnTimeout){
     afkNudgeInFlight = true;
     try{
       const r = await gameAction(GAME_ID, curId, "skip-turn");
@@ -1714,9 +1747,12 @@ setInterval(()=>{
     if(buyEl)    buyEl.style.width = pct + "%";
     if(buyNumEl) buyNumEl.textContent = Math.ceil(remain/1000) + "s";
     const remainSec = Math.ceil(remain/1000);
-    if(remainSec <= 3 && remainSec >= 1 && remainSec !== lastBuyTickSecond){
+    // Chỉ phát CẢNH BÁO đúng 1 LẦN khi còn 5s cho mỗi lượt mua đất (không lặp mỗi giây nữa vì
+    // đã có tiếng tictac đồng hồ chạy liên tục riêng rồi). Dùng chính mốc pendingBuyExpireAt làm
+    // "khóa" — mỗi lượt mua đất có 1 mốc expire khác nhau nên không bị phát trùng/phát lại.
+    if(remainSec <= 5 && remainSec >= 1 && lastBuyTickSecond !== state.pendingBuyExpireAt){
       playSfx("countdown_tick");
-      lastBuyTickSecond = remainSec;
+      lastBuyTickSecond = state.pendingBuyExpireAt;
     }
   } else {
     if(buyEl)    buyEl.style.width = "100%";
