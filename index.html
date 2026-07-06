@@ -432,6 +432,8 @@ const SFX_FILES = {
   weak_alert:    "./assets/sounds/weak_alert.mp3",
   countdown_tick:"./assets/sounds/countdown_tick.mp3",
   rank_reveal:   "./assets/sounds/rank_reveal.mp3",
+  rank_reveal_top3: "./assets/sounds/rank_reveal_top3.mp3",
+  champion_fanfare: "./assets/sounds/champion_fanfare.mp3",
   player_joined: "./assets/sounds/player_joined.mp3",
   phase_change:  "./assets/sounds/phase_change.mp3",
 };
@@ -527,6 +529,29 @@ musicVolumeSlider.addEventListener("input", ()=>{
   bgMusic.volume = musicVolume;
   localStorage.setItem(MUSIC_VOLUME_KEY, musicVolumeSlider.value);
 });
+// Giảm dần âm lượng nhạc nền rồi tắt hẳn (dùng khi kết thúc game, chuyển sang bảng xếp hạng).
+// Sau khi fade xong, khôi phục lại đúng mức âm lượng người dùng đã chọn (musicVolume) để nếu có
+// ván mới, nhạc nền phát lại đúng mức cũ chứ không bị kẹt ở 0.
+let musicFadeInterval = null;
+function fadeOutMusic(duration = 1500){
+  if(bgMusic.paused) return;
+  if(musicFadeInterval) clearInterval(musicFadeInterval);
+  const steps = 20;
+  const stepTime = duration / steps;
+  const startVol = bgMusic.volume;
+  let i = 0;
+  musicFadeInterval = setInterval(()=>{
+    i++;
+    bgMusic.volume = Math.max(0, startVol * (1 - i/steps));
+    if(i >= steps){
+      clearInterval(musicFadeInterval);
+      musicFadeInterval = null;
+      bgMusic.pause();
+      bgMusic.currentTime = 0;
+      bgMusic.volume = musicVolume;
+    }
+  }, stepTime);
+}
 // Mở khoá nhạc nền ngay lần tương tác đầu tiên bất kỳ trên trang (bắt buộc do chính sách autoplay
 // của trình duyệt) — ví dụ bấm chọn đội trong lobby, hay bấm bất cứ đâu trên màn hình trình chiếu.
 ["click","keydown","touchstart"].forEach(evt=>{
@@ -1049,7 +1074,8 @@ function renderAll(){
   lastMyTurnState = isNowMyTurn;
   if(state.turnOrderLocked && !lastTurnOrderLocked) playSfx("game_start");
   lastTurnOrderLocked = !!state.turnOrderLocked;
-  if(state.gameEnded && !lastGameEnded) playSfx("game_end");
+  if(state.gameEnded && !lastGameEnded){ playSfx("game_end"); fadeOutMusic(); }
+  else if(!state.gameEnded && lastGameEnded){ tryStartMusic(); }
   lastGameEnded = !!state.gameEnded;
   if(!phaseInitialized){ lastPhase = state.phase; phaseInitialized = true; }
   else if(state.phase !== lastPhase){ playSfx("phase_change"); lastPhase = state.phase; }
@@ -1845,7 +1871,9 @@ function renderResultModal(){
       ? `Cổ đông ${Math.round((p.shareholderEquity||0)*100)}% của ${state.players[p.shareholderOf].name}`
       : "Độc lập";
     setTimeout(()=>{
-      playSfx("rank_reveal");
+      if(rank === 0) playSfx("champion_fanfare");
+      else if(rank === 1 || rank === 2) playSfx("rank_reveal_top3");
+      else playSfx("rank_reveal");
       const tr=document.createElement("tr");
       tr.style.cssText="animation:fadeSlideIn .4s ease; opacity:0;";
       tr.innerHTML=`<td style="font-size:18px; text-align:center;">${medal}</td>
