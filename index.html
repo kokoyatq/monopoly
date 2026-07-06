@@ -210,9 +210,36 @@
     from{opacity:0; transform:translateY(18px);}
     to{opacity:1; transform:translateY(0);}
   }
+
+  #sfxPanel{
+    position:fixed; top:14px; right:14px; z-index:60;
+    display:flex; flex-direction:column; gap:6px;
+    background:rgba(255,255,255,.92); border-radius:16px; padding:8px 12px;
+    box-shadow:0 4px 14px rgba(0,0,0,.3);
+  }
+  .sfx-row{ display:flex; align-items:center; gap:8px; }
+  .sfx-row button{
+    width:30px; height:30px; border-radius:50%; padding:0; font-size:15px;
+    background:#f1ebff; color:#2d2150; box-shadow:none; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .sfx-row input[type="range"]{
+    width:88px; accent-color:#7b3ff2; cursor:pointer;
+  }
 </style>
 </head>
 <body>
+
+<div id="sfxPanel">
+  <div class="sfx-row">
+    <button id="btnSfxToggle" title="Bật/tắt âm thanh hiệu ứng">🔊</button>
+    <input type="range" id="sfxVolumeSlider" min="0" max="100" value="70" title="Âm lượng hiệu ứng">
+  </div>
+  <div class="sfx-row">
+    <button id="btnMusicToggle" title="Bật/tắt nhạc nền">🎵</button>
+    <input type="range" id="musicVolumeSlider" min="0" max="100" value="35" title="Âm lượng nhạc nền">
+  </div>
+</div>
 
 <div id="boardWrap">
   <div id="boardLeftPanel">
@@ -369,6 +396,140 @@
 const params = new URLSearchParams(location.search);
 const isDisplayMode = params.get("mode") === "display";
 
+/* ─── Âm thanh (SFX) ───
+   Toàn bộ file âm thanh đặt tại ./assets/sounds/<tên>.mp3 — xem danh sách 10 file cần có bên dưới.
+   Thiết kế để "graceful" nếu thiếu file: play() lỗi (404, bị trình duyệt chặn autoplay khi chưa
+   có tương tác...) đều được bắt và bỏ qua lặng lẽ, KHÔNG làm crash hay chặn phần logic game. */
+const SFX_ENABLED_KEY = "ctdq_sfx_enabled";
+const SFX_VOLUME_KEY = "ctdq_sfx_volume";
+let sfxEnabled = localStorage.getItem(SFX_ENABLED_KEY) !== "off"; // mặc định BẬT
+let sfxVolume = (()=>{ const v = parseInt(localStorage.getItem(SFX_VOLUME_KEY)); return Number.isFinite(v) ? v/100 : 0.7; })();
+
+const SFX_FILES = {
+  dice:          "./assets/sounds/dice_roll.mp3",
+  buy:           "./assets/sounds/buy_success.mp3",
+  pay:           "./assets/sounds/pay_money.mp3",
+  receive:       "./assets/sounds/receive_money.mp3",
+  jail_in:       "./assets/sounds/go_to_jail.mp3",
+  jail_out:      "./assets/sounds/jail_escape.mp3",
+  eliminate:     "./assets/sounds/eliminate.mp3",
+  your_turn:     "./assets/sounds/your_turn.mp3",
+  game_start:    "./assets/sounds/game_start.mp3",
+  game_end:      "./assets/sounds/game_end.mp3",
+  ui_click:      "./assets/sounds/ui_click.mp3",
+  double_roll:   "./assets/sounds/double_roll.mp3",
+  monopoly:      "./assets/sounds/monopoly.mp3",
+  weak_alert:    "./assets/sounds/weak_alert.mp3",
+  countdown_tick:"./assets/sounds/countdown_tick.mp3",
+  rank_reveal:   "./assets/sounds/rank_reveal.mp3",
+  player_joined: "./assets/sounds/player_joined.mp3",
+  phase_change:  "./assets/sounds/phase_change.mp3",
+};
+const sfxCache = {};
+function playSfx(name){
+  if(!sfxEnabled) return;
+  const src = SFX_FILES[name];
+  if(!src) return;
+  try{
+    let base = sfxCache[name];
+    if(!base){ base = new Audio(src); sfxCache[name] = base; }
+    base.volume = sfxVolume;
+    // Clone để có thể phát chồng (ví dụ 2 sự kiện liên tiếp trong cùng 1 lượt) mà không cắt ngang
+    // âm đang phát dở của lần trước.
+    const node = base.cloneNode();
+    node.volume = sfxVolume;
+    node.play().catch(()=>{}); // bị chặn autoplay hoặc thiếu file → bỏ qua lặng lẽ, không lỗi
+  }catch(e){ /* không có sound cũng không sao, game vẫn chạy bình thường */ }
+}
+// Map emoji-đầu-dòng của event → âm thanh tương ứng. Dùng chung 1 chỗ cho MỌI nguồn phát event
+// (tự roll, xem người khác roll qua Realtime, hay do afkWatchdog tự đẩy hộ) vì tất cả đều đi qua
+// queueEventBanners() — xem chỗ gọi playSfxForEvents() bên trong hàm đó.
+const EVENT_SFX_MAP = [
+  { prefix: "🏠", sfx: "buy" },
+  { prefix: "💀", sfx: "eliminate" },
+  { prefix: "🔓", sfx: "jail_out" },
+  { prefix: "🚔", sfx: "jail_in" },
+  { prefix: "🏛️", sfx: "pay" },
+  { prefix: "💸", sfx: "pay" },
+  { prefix: "🏁", sfx: "receive" },
+  { prefix: "🙋", sfx: "player_joined" },
+];
+function playSfxForEvents(events){
+  if(!events) return;
+  events.forEach(e=>{
+    const m = EVENT_SFX_MAP.find(x=>e.startsWith(x.prefix));
+    if(m) playSfx(m.sfx);
+  });
+}
+function updateSfxToggleIcon(){
+  const btn = document.getElementById("btnSfxToggle");
+  if(btn) btn.textContent = sfxEnabled ? "🔊" : "🔇";
+}
+document.getElementById("btnSfxToggle").addEventListener("click", ()=>{
+  sfxEnabled = !sfxEnabled;
+  localStorage.setItem(SFX_ENABLED_KEY, sfxEnabled ? "on" : "off");
+  updateSfxToggleIcon();
+  if(sfxEnabled) playSfx("buy"); // phát thử 1 tiếng ngắn để xác nhận + "mở khoá" audio cho tab này
+});
+updateSfxToggleIcon();
+const sfxVolumeSlider = document.getElementById("sfxVolumeSlider");
+sfxVolumeSlider.value = Math.round(sfxVolume*100);
+sfxVolumeSlider.addEventListener("input", ()=>{
+  sfxVolume = sfxVolumeSlider.value / 100;
+  localStorage.setItem(SFX_VOLUME_KEY, sfxVolumeSlider.value);
+});
+sfxVolumeSlider.addEventListener("change", ()=>{ playSfx("ui_click"); }); // thả tay ra thì nghe thử luôn cho biết to/nhỏ
+
+/* ─── Nhạc nền (loop suốt ván) ───
+   File: ./assets/sounds/bg_music.mp3 — nên chọn bản nhạc không lời, vui tươi, loop mượt (không
+   có khoảng lặng đầu/cuối để không bị giật/khựng khi lặp lại). Tách riêng nút bật/tắt với SFX để
+   người chơi tự chọn: có thể tắt nhạc nền nhưng vẫn giữ tiếng hiệu ứng, hoặc ngược lại.
+   Trình duyệt CHẶN autoplay có âm thanh nếu chưa có tương tác nào của người dùng trên trang, nên
+   nhạc chỉ thực sự bắt đầu phát ngay sau cú click/gõ phím/chạm đầu tiên bất kỳ (xử lý bên dưới). */
+const MUSIC_ENABLED_KEY = "ctdq_music_enabled";
+const MUSIC_VOLUME_KEY = "ctdq_music_volume";
+let musicEnabled = localStorage.getItem(MUSIC_ENABLED_KEY) !== "off"; // mặc định BẬT
+let musicVolume = (()=>{ const v = parseInt(localStorage.getItem(MUSIC_VOLUME_KEY)); return Number.isFinite(v) ? v/100 : 0.35; })();
+const bgMusic = new Audio("./assets/sounds/bg_music.mp3");
+bgMusic.loop = true;
+bgMusic.volume = musicVolume; // nhỏ hơn SFX mặc định để không át tiếng hiệu ứng/giọng người chơi
+let musicUnlocked = false;
+function tryStartMusic(){
+  if(!musicEnabled || musicUnlocked) return;
+  bgMusic.play().then(()=>{ musicUnlocked = true; }).catch(()=>{ /* chưa được phép — chờ tương tác kế tiếp */ });
+}
+function updateMusicToggleIcon(){
+  const btn = document.getElementById("btnMusicToggle");
+  if(btn) btn.textContent = musicEnabled ? "🎵" : "🔇";
+}
+document.getElementById("btnMusicToggle").addEventListener("click", ()=>{
+  musicEnabled = !musicEnabled;
+  localStorage.setItem(MUSIC_ENABLED_KEY, musicEnabled ? "on" : "off");
+  updateMusicToggleIcon();
+  if(musicEnabled){ musicUnlocked = false; tryStartMusic(); }
+  else { bgMusic.pause(); }
+});
+updateMusicToggleIcon();
+const musicVolumeSlider = document.getElementById("musicVolumeSlider");
+musicVolumeSlider.value = Math.round(musicVolume*100);
+musicVolumeSlider.addEventListener("input", ()=>{
+  musicVolume = musicVolumeSlider.value / 100;
+  bgMusic.volume = musicVolume;
+  localStorage.setItem(MUSIC_VOLUME_KEY, musicVolumeSlider.value);
+});
+// Mở khoá nhạc nền ngay lần tương tác đầu tiên bất kỳ trên trang (bắt buộc do chính sách autoplay
+// của trình duyệt) — ví dụ bấm chọn đội trong lobby, hay bấm bất cứ đâu trên màn hình trình chiếu.
+["click","keydown","touchstart"].forEach(evt=>{
+  document.addEventListener(evt, tryStartMusic, { once:true });
+});
+
+// Tiếng "click" chung cho MỌI nút bấm trong toàn bộ trang (Roll, Mua, Tù, xác nhận vào phòng...),
+// dùng 1 listener duy nhất ở document thay vì phải sửa từng nút — trừ 2 nút bật/tắt âm thanh/nhạc
+// (đã tự có phản hồi riêng của chúng).
+document.addEventListener("click", (e)=>{
+  const btn = e.target.closest("button");
+  if(btn && btn.id !== "btnSfxToggle" && btn.id !== "btnMusicToggle") playSfx("ui_click");
+}, true);
 
 const LOBBY_KEY = "ctdq_my_slot";
 let myPlayerId = null;
@@ -378,6 +539,13 @@ let lastSeenDiceRollId = null;
 let lastSeenEventId = null;
 let sequenceLocked = false;
 const warnedWeak = new Set();
+let lastMyTurnState = false;   // theo dõi để chỉ phát "your_turn" đúng 1 lần khi vừa chuyển sang lượt mình
+let lastTurnOrderLocked = false; // theo dõi để phát "game_start" đúng 1 lần khi game vừa bắt đầu
+let lastGameEnded = false;       // theo dõi để phát "game_end" đúng 1 lần khi game vừa kết thúc
+let lastMonopolySet = new Set(); // theo dõi ai ĐÃ đạt độc quyền rồi, để chỉ phát "monopoly" đúng lúc vừa đạt
+let lastPhase = null;            // theo dõi giai đoạn hiện tại để phát "phase_change" khi MC chuyển giai đoạn
+let phaseInitialized = false;
+let lastBuyTickSecond = null;    // theo dõi để "countdown_tick" chỉ tích đúng 1 lần mỗi giây, không spam
 
 let state = null;
 const canvas = document.getElementById("boardCanvas");
@@ -430,7 +598,7 @@ function applyBoardFx(events, landedIdx){
   if(!events) return;
   events.forEach(e=>{
     if(e.startsWith("🏁")) spawnStartPulse();
-    else if(e.startsWith("💸")||e.startsWith("🧾")||e.startsWith("🏛️")||e.startsWith("🚔")) spawnTileShake(landedIdx);
+    else if(e.startsWith("💸")||e.startsWith("🧾")||e.startsWith("🏛️")||e.startsWith("🚔")||e.startsWith("💀")) spawnTileShake(landedIdx);
   });
 }
 // Tìm ô vừa đổi chủ (so sánh state cũ/mới) — dùng cho người XEM khi người khác mua đất
@@ -638,6 +806,8 @@ function buildDiceEl(value){
   return div;
 }
 function showDiceOnBoard(d1, d2, cb){
+  playSfx("dice");
+  if(d1 === d2) playSfx("double_roll");
   const overlay = document.getElementById("diceOverlay");
   const stage   = document.getElementById("diceStage");
   const badge   = document.getElementById("diceSumBadge");
@@ -713,6 +883,7 @@ let eventBannerQueue = [];
 let eventBannerBusy = false;
 function queueEventBanners(events){
   if(!events || events.length===0) return;
+  playSfxForEvents(events);
   eventBannerQueue.push(...events);
   if(!eventBannerBusy) playNextEventBanner();
 }
@@ -739,7 +910,7 @@ function checkWeakWarnings(){
   // Xóa khỏi warnedWeak những đội đã hồi phục → lần sau yếu lại vẫn bật cảnh báo
   [...warnedWeak].forEach(id=>{ if(!weakIds.has(id)) warnedWeak.delete(id); });
   weakNow.forEach(p=>{
-    if(!warnedWeak.has(p.id)){ warnedWeak.add(p.id); flashWeakAlert(p); }
+    if(!warnedWeak.has(p.id)){ warnedWeak.add(p.id); playSfx("weak_alert"); flashWeakAlert(p); }
   });
   if(weakNow.length > 0){
     banner.textContent = `⚠️ Doanh nghiệp đang YẾU: ${weakNow.map(p=>p.name).join(", ")} — cần hỗ trợ!`;
@@ -814,7 +985,10 @@ document.getElementById("btnClaimConfirm").addEventListener("click", async ()=>{
     const p=s.players[selectedSlotForClaim];
     if(p.joined||s.gameStarted) return;
     p.joined=true; p.name=name;
-    addLog(s,`🙋 "${name}" đã vào phòng.`);
+    const joinMsg = `🙋 "${name}" đã vào phòng.`;
+    addLog(s, joinMsg);
+    s.lastEvents = [joinMsg];
+    s.lastEventId = Date.now() + Math.random();
     success=true;
   });
   if(success){
@@ -858,6 +1032,23 @@ function renderAll(){
   const dot = document.getElementById("currentTurnDot");
   dot.style.background = curPlayer ? curPlayer.color : "transparent";
   dot.style.display = curPlayer ? "inline-block" : "none";
+
+  // ── Âm thanh theo thay đổi trạng thái (chỉ phát đúng 1 lần tại thời điểm chuyển trạng thái) ──
+  const isNowMyTurn = myPlayerId !== null && curId === myPlayerId && curPlayer && curPlayer.status === "active";
+  if(isNowMyTurn && !lastMyTurnState) playSfx("your_turn");
+  lastMyTurnState = isNowMyTurn;
+  if(state.turnOrderLocked && !lastTurnOrderLocked) playSfx("game_start");
+  lastTurnOrderLocked = !!state.turnOrderLocked;
+  if(state.gameEnded && !lastGameEnded) playSfx("game_end");
+  lastGameEnded = !!state.gameEnded;
+  if(!phaseInitialized){ lastPhase = state.phase; phaseInitialized = true; }
+  else if(state.phase !== lastPhase){ playSfx("phase_change"); lastPhase = state.phase; }
+  state.players.forEach(p=>{
+    const nowMono = p.status==="active" && isMonopoly(state,p);
+    if(nowMono && !lastMonopolySet.has(p.id)) playSfx("monopoly");
+    if(nowMono) lastMonopolySet.add(p.id); else lastMonopolySet.delete(p.id);
+  });
+
   renderBoard();
   renderPlayers();
   renderLog();
@@ -1408,14 +1599,77 @@ async function selfHealTimers(){
   healingTimers = false;
 }
 
+/* ─── AFK Watchdog: đảm bảo ván KHÔNG BAO GIỜ bị treo vĩnh viễn nếu người đang tới lượt bị
+   lag / mất kết nối / đứng máy. Hàm này chạy trên MỌI trình duyệt đang mở trang (kể cả những
+   người khác đang xem, kể cả màn hình trình chiếu), KHÔNG phụ thuộc việc có phải máy của người
+   đang tới lượt hay không. Nhờ vậy chỉ cần còn 1 thiết bị bất kỳ mở trang là ván vẫn tự trôi
+   tiếp, không bị treo cứng chờ đúng cái máy đang gặp sự cố. ──
+   Cơ chế: nếu quá AFK_TIMEOUT (45s) mà "lượt hiện tại" không có động tĩnh gì (không roll /
+   không xử lý tù) thì tự động đẩy hộ bằng action an toàn nhất (skip-turn / jail-wait).
+   Riêng phần mua đất vẫn giữ nguyên 15s như cũ (BUY_TIMEOUT), chỉ khác là giờ AI CŨNG có thể
+   là người bấm hộ, không riêng gì máy của người đang tới lượt. */
+const AFK_TIMEOUT = 45000;
+let afkNudgeInFlight = false;
+async function afkWatchdog(){
+  if(!state || !state.turnOrderLocked || state.gameEnded) return;
+  if(afkNudgeInFlight) return;
+  const curId = currentPlayerId(state);
+  if(curId === null) return;
+  const curPlayer = state.players[curId];
+  if(!curPlayer || curPlayer.status !== "active") return;
+  const now = Date.now();
+
+  // 1) Đang chờ quyết định mua đất mà quá hạn 15s → tự động MUA giúp (đúng hành vi mặc định cũ,
+  //    chỉ khác là giờ chạy được từ BẤT KỲ client nào, không riêng máy người đang tới lượt).
+  if(state.pendingBuyTile !== null && state.pendingBuyTile !== undefined && state.pendingBuyExpireAt && now >= state.pendingBuyExpireAt){
+    afkNudgeInFlight = true;
+    try{
+      const r = await gameAction(GAME_ID, curId, "buy-yes");
+      state = r.state; if(state.lastEventId) lastSeenEventId = state.lastEventId;
+      queueEventBanners(r.events);
+      if(!sequenceLocked) renderAll();
+    }catch(e){ /* client khác đã xử lý trước hoặc hết hạn — bỏ qua, không phải lỗi thật */ }
+    afkNudgeInFlight = false;
+    return;
+  }
+
+  // 2) Đang ở tù mà im lặng quá lâu (máy họ treo, không mở được modal Tù) → tự chọn "chờ thêm
+  //    lượt" — lựa chọn an toàn nhất, không tốn tiền của họ.
+  if(curPlayer.jailTurns > 0){
+    if(state.turnStartedAt && now - state.turnStartedAt >= AFK_TIMEOUT){
+      afkNudgeInFlight = true;
+      try{
+        const r = await gameAction(GAME_ID, curId, "jail-wait");
+        state = r.state; if(state.lastEventId) lastSeenEventId = state.lastEventId;
+        if(!sequenceLocked) renderAll();
+      }catch(e){}
+      afkNudgeInFlight = false;
+    }
+    return;
+  }
+
+  // 3) Tới lượt roll mà im lặng quá lâu (lag / mất kết nối / đứng máy) → tự động bỏ lượt.
+  if(state.turnStartedAt && now - state.turnStartedAt >= AFK_TIMEOUT){
+    afkNudgeInFlight = true;
+    try{
+      const r = await gameAction(GAME_ID, curId, "skip-turn");
+      state = r.state; if(state.lastEventId) lastSeenEventId = state.lastEventId;
+      queueEventBanners(r.events);
+      if(!sequenceLocked) renderAll();
+    }catch(e){}
+    afkNudgeInFlight = false;
+  }
+}
+
 setInterval(()=>{
   if(!state || !state.turnOrderLocked || state.gameEnded) return;
   selfHealTimers();
+  afkWatchdog();
   const now = Date.now();
-  const curId = currentPlayerId(state);
-  const isMyTurn = myPlayerId !== null && curId === myPlayerId && !isDisplayMode;
 
-  // ── Timer mua đất (15s) ──
+  // ── Thanh đếm ngược mua đất (15s) — chỉ để HIỂN THỊ. Việc tự mua khi hết giờ giờ do
+  //    afkWatchdog() ở trên đảm nhiệm (chạy trên mọi client), không còn phụ thuộc riêng máy
+  //    của người đang tới lượt nữa. ──
   const buyEl    = document.getElementById("buyCountdownBar");
   const buyNumEl = document.getElementById("buyCountdownNum");
   if(state.pendingBuyTile !== null && state.pendingBuyExpireAt){
@@ -1423,15 +1677,20 @@ setInterval(()=>{
     const pct    = (remain / BUY_TIMEOUT) * 100;
     if(buyEl)    buyEl.style.width = pct + "%";
     if(buyNumEl) buyNumEl.textContent = Math.ceil(remain/1000) + "s";
-    if(isMyTurn && remain === 0 && !sequenceLocked){
-      document.getElementById("btnBuyYes")?.click();
+    const remainSec = Math.ceil(remain/1000);
+    if(remainSec <= 3 && remainSec >= 1 && remainSec !== lastBuyTickSecond){
+      playSfx("countdown_tick");
+      lastBuyTickSecond = remainSec;
     }
   } else {
     if(buyEl)    buyEl.style.width = "100%";
     if(buyNumEl) buyNumEl.textContent = "15s";
+    lastBuyTickSecond = null;
   }
 
-  // ── Timer roll: ĐÃ BỎ auto-skip lượt sau 10s theo yêu cầu — chỉ ẩn khối UI đếm ngược ──
+  // ── Timer roll: không hiện đếm ngược cho người chơi (theo yêu cầu trước đó) — nhưng
+  //    afkWatchdog() ở trên vẫn âm thầm đảm bảo ván không bị treo vĩnh viễn nếu có người
+  //    mất kết nối/lag ngay đúng lúc tới lượt họ. ──
   const rollWrap = document.getElementById("rollCountdownWrap");
   if(rollWrap) rollWrap.style.display = "none";
 }, 400);
@@ -1572,6 +1831,7 @@ function renderResultModal(){
       ? `Cổ đông ${Math.round((p.shareholderEquity||0)*100)}% của ${state.players[p.shareholderOf].name}`
       : "Độc lập";
     setTimeout(()=>{
+      playSfx("rank_reveal");
       const tr=document.createElement("tr");
       tr.style.cssText="animation:fadeSlideIn .4s ease; opacity:0;";
       tr.innerHTML=`<td style="font-size:18px; text-align:center;">${medal}</td>
@@ -1660,18 +1920,6 @@ document.getElementById("btnRoll").addEventListener("click", async ()=>{
     renderAll();
   }
 }); // ← đóng event listener đúng chỗ
-
-/* ─── Helpers lượt đi (dùng cho mutateState trong buy/jail modal) ─── */
-function advanceTurn(s){ s.currentTurnPos=nextTurnIndexFor(s); }
-function nextTurnIndexFor(s){
-  const n = s.turnOrder.length;
-  const anyActive = s.turnOrder.some(id => s.players[id].status === "active");
-  if(!anyActive){ s.gameEnded = true; return s.currentTurnPos; }
-  let pos=s.currentTurnPos, tries=0;
-  do{ pos=(pos+1)%n; tries++; }
-  while(s.players[s.turnOrder[pos]].status!=="active" && tries<n);
-  return pos;
-}
 
 /* ─── Khôi phục buy modal nếu reload khi đang chờ mua đất ─── */
 function checkPendingBuy(){
