@@ -197,6 +197,16 @@
   .modal-overlay{position:fixed; inset:0; background:rgba(20,10,40,.65); display:none; align-items:center; justify-content:center; z-index:50;}
   .modal-overlay.show{display:flex;}
   .modal-box{background:#fff; color:var(--panel-text); border-radius:22px; padding:24px; min-width:320px; box-shadow:0 20px 50px rgba(0,0,0,.4);}
+
+  /* Nền tối riêng cho bảng kết quả cuối game, dễ nhìn hơn khi chiếu lên màn hình lớn */
+  #resultModal .modal-box{
+    background:linear-gradient(160deg, #241454, #3a1f6e 70%);
+    color:#f3edff;
+    box-shadow:0 20px 60px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.08);
+  }
+  #resultModal .modal-box h3{ color:#ffd23f; }
+  #resultModal table th{ background:rgba(255,255,255,.10); color:#ffd23f; border-color:rgba(255,255,255,.18); }
+  #resultModal table td{ border-color:rgba(255,255,255,.14); color:#f3edff; }
   .modal-box h3{margin-top:0; color:#7b3ff2; font-size:20px;}
   .row-flex{display:flex; gap:10px;}
   .row-flex>*{flex:1;}
@@ -212,7 +222,7 @@
   }
 
   #sfxPanel{
-    position:fixed; top:14px; right:14px; z-index:60;
+    position:fixed; top:14px; left:14px; z-index:60;
     display:flex; flex-direction:column; gap:6px;
     background:rgba(255,255,255,.92); border-radius:16px; padding:8px 12px;
     box-shadow:0 4px 14px rgba(0,0,0,.3);
@@ -1819,9 +1829,13 @@ function renderResultModal(){
     .sort((a,b)=>totalAssets(state,b)-totalAssets(state,a));
 
   const tbody=document.getElementById("resultTable");
-  tbody.innerHTML=`<tr><th>#</th><th>Đội</th><th>Tiền</th><th>Giá trị đất</th><th>Tổng TS</th><th>Trạng thái</th></tr>`;
+  tbody.innerHTML=`<tr id="resultHeaderRow"><th>#</th><th>Đội</th><th>Tiền</th><th>Giá trị đất</th><th>Tổng TS</th><th>Trạng thái</th></tr>`;
+  const headerRow = document.getElementById("resultHeaderRow");
 
-  // Reveal từ hạng thấp nhất → hạng 1, mỗi hạng cách nhau 900ms để tạo cảm giác hồi hộp
+  // Reveal từ hạng thấp nhất → hạng 1, mỗi hạng cách nhau 900ms để tạo cảm giác hồi hộp.
+  // MỖI dòng mới luôn được chèn NGAY DƯỚI header (không phải nối vào cuối bảng) — nhờ vậy dù
+  // thứ tự công bố là từ dưới lên, các dòng cũ luôn bị đẩy xuống, và khi công bố xong Top 1
+  // (luôn là dòng được chèn SAU CÙNG) sẽ luôn nằm ở vị trí trên cùng, đúng thứ hạng thật.
   const total = ranked.length;
   ranked.slice().reverse().forEach((p, revIdx)=>{
     const rank = total - 1 - revIdx; // vị trí thật trong mảng đã sort (0 = nhất)
@@ -1840,7 +1854,7 @@ function renderResultModal(){
         <td>${propVal.toLocaleString()}$</td>
         <td><b>${totalAssets(state,p).toLocaleString()}$</b></td>
         <td style="font-size:11px;">${equityStr}</td>`;
-      tbody.appendChild(tr);
+      headerRow.insertAdjacentElement("afterend", tr);
       // Force reflow để animation chạy được
       requestAnimationFrame(()=>{ tr.style.opacity="1"; });
     }, revIdx * 900);
