@@ -139,23 +139,23 @@
     color:#fff; font-family:'Baloo 2',sans-serif; font-weight:800; font-size:17px;
     padding:14px 28px; border-radius:18px; z-index:40; pointer-events:none;
     box-shadow:0 10px 30px rgba(0,0,0,.5); white-space:normal; text-align:center;
-    line-height:1.35; opacity:0; display:none; max-width:70%;
+    line-height:1.35; opacity:0; display:none; max-width:86%; word-break:break-word;
     transition:opacity .25s, transform .25s;
   }
   #eventBanner.show{display:block; opacity:1; transform:translate(-50%,-50%) scale(1);}
 
   #boardLogPanel{
     position:absolute; bottom:15%; left:50%; transform:translateX(-50%);
-    width:56%; max-width:360px; z-index:22; pointer-events:none;
+    width:64%; max-width:440px; z-index:22; pointer-events:none;
     background:rgba(20,10,45,.62); border-radius:12px; padding:6px 12px;
     box-shadow:0 4px 14px rgba(0,0,0,.3), inset 0 0 0 1px rgba(255,255,255,.08);
   }
   #boardLogList{
-    display:flex; flex-direction:column; gap:2px; max-height:52px; overflow:hidden;
+    display:flex; flex-direction:column; gap:3px; max-height:100px; overflow:hidden;
     font-family:'Nunito',sans-serif; font-size:10px; font-weight:700; color:#fff;
   }
   #boardLogList p{
-    margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    margin:0; white-space:normal; word-break:break-word; line-height:1.3;
     text-shadow:0 1px 2px rgba(0,0,0,.7); opacity:.6;
   }
   #boardLogList p:first-child{opacity:1; font-size:11px; color:#ffd23f;}
@@ -177,7 +177,7 @@
   .player-card.shareholder{opacity:.65; font-style:italic;}
   .player-card.weak-warning{border-color:#ff5c5c; background:#fff5f5; animation:cardPulse 2s infinite;}
   @keyframes cardPulse{0%,100%{box-shadow:0 3px 0 rgba(0,0,0,.06);}50%{box-shadow:0 0 0 4px rgba(255,92,92,.25);}}
-  .dot{display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px;}
+  .dot{display:inline-block; width:20px; height:20px; border-radius:50%; margin-right:6px; vertical-align:middle;}
   .tag{display:inline-block; font-size:9.5px; padding:2px 7px; border-radius:999px; margin-left:4px; color:#fff; font-weight:800;}
   .tag.weak{background:var(--bad);} .tag.mono{background:#e0680b;} .tag.jail{background:#3b6fd6;} .tag.shareholder-tag{background:#7b3ff2;}
 
@@ -267,7 +267,7 @@
   </div>
   <div id="canvasWrap">
     <canvas id="bgParticles" width="1140" height="1140"></canvas>
-    <canvas id="boardCanvas" width="760" height="760"></canvas>
+    <canvas id="boardCanvas" width="886" height="886"></canvas>
     <div id="diceOverlay"><div class="dice-stage" id="diceStage"></div></div>
     <div id="diceSumBadge"></div>
     <div id="weakBanner"></div>
@@ -358,7 +358,7 @@
     </div>
     <div class="row-flex">
       <button class="btn-buy" id="btnBuyYes">✅ Mua</button>
-      <button class="btn-skip" id="btnBuyNo">❌ Bỏ qua</button>
+      <button class="btn-skip" id="btnBuyNo">💰 Không mua — vẫn trả phí mặt bằng</button>
     </div>
   </div>
 </div>
@@ -608,7 +608,7 @@ for (let i = 0; i < 8; i++) {
 let tileFx = [];      // {type:'shake'|'pulse'|'flash', idx, start, duration}
 let floatTexts = [];  // {x,y,text,color,start,duration}
 const AMBIENT_PARTICLES = Array.from({length: 24}, ()=>({
-  x: Math.random()*760, y: Math.random()*760,
+  x: Math.random()*886, y: Math.random()*886,
   r: 1 + Math.random()*2.2,
   speed: 0.012 + Math.random()*0.02,
   driftPhase: Math.random()*1000,
@@ -649,10 +649,11 @@ function findNewlyBoughtTile(prevState, newState){
 /* ─── Board geometry — Monopoly style ─── */
 // CW = góc vuông lớn, SW = chiều ngắn ô cạnh (dọc theo viền), SH = chiều sâu ô cạnh (vào trong bàn)
 const CW = 92;            // corner tile size
-const SW = 64;            // side tile: narrow dim (along edge)
+const SW = 78;            // side tile: narrow dim (along edge) — tăng từ 64 lên 78 để chữ đọc
+                           // ngang (không cần xoay dọc) mà vẫn đủ chỗ tương đương như trước
 const SH = 92;            // side tile: deep dim (into board) — same as CW
 const BAND = 14;          // color band thickness
-const BOARD_W = 760;      // must equal canvas width
+const BOARD_W = 886;      // must equal canvas width — 2*CW + 9*SW = 2*92 + 9*78 = 886
 
 // Trả về mảng {x,y,w,h,side} cho từng ô (side = 'top'|'right'|'bottom'|'left'|'corner-tl'|...)
 function buildTileRects(){
@@ -930,7 +931,7 @@ function playNextEventBanner(){
   const text = eventBannerQueue.shift();
   banner.textContent = text;
   banner.classList.add("show");
-  const showMs = text.length > 40 ? 3400 : 2200;
+  const showMs = text.length > 70 ? 4600 : (text.length > 40 ? 3400 : 2200);
   setTimeout(()=>{
     banner.classList.remove("show");
     setTimeout(playNextEventBanner, 220);
@@ -995,12 +996,14 @@ function renderLobby(){
   list.innerHTML = "";
   state.players.forEach(p=>{
     const btn = document.createElement("button");
+    btn.style.display="flex"; btn.style.alignItems="center"; btn.style.gap="10px"; btn.style.textAlign="left";
+    const avatarHtml = `<img src="./assets/token-${p.id}.png" onerror="this.style.display='none'" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;background:rgba(255,255,255,.3);"/>`;
     if(p.joined){
-      btn.textContent=`✅ ${p.name} — đã có người`; btn.disabled=true; btn.className="btn-skip";
+      btn.innerHTML=`${avatarHtml}<span>✅ ${p.name} — đã có người</span>`; btn.disabled=true; btn.className="btn-skip";
     } else if(state.gameStarted){
-      btn.textContent=`⛔ Ô trống — game đã bắt đầu, không vào được nữa`; btn.disabled=true; btn.className="btn-skip";
+      btn.innerHTML=`${avatarHtml}<span>⛔ Ô trống — game đã bắt đầu, không vào được nữa</span>`; btn.disabled=true; btn.className="btn-skip";
     } else {
-      btn.textContent=`⬜ Ô trống — bấm để chọn`;
+      btn.innerHTML=`${avatarHtml}<span>⬜ Ô trống — bấm để chọn</span>`;
       btn.style.background=p.color; btn.style.color="#fff"; btn.style.boxShadow="none";
       btn.onclick=()=>{
         selectedSlotForClaim=p.id;
@@ -1170,12 +1173,13 @@ function drawTile(tile, idx, pos, ts){
     ctx.translate(Math.sin(prog*38)*3*Math.max(0,1-prog), 0);
   }
 
-  // ── Nền trắng, viền đen sắc nét ──
-  ctx.fillStyle="#ffffff"; ctx.fillRect(tx,ty,tw,th);
-  ctx.strokeStyle="#000"; ctx.lineWidth=0.8; ctx.strokeRect(tx,ty,tw,th);
-
   const isCorner = side.startsWith('corner');
   const owner = tile.type==="property" ? state.tiles[idx].owner : null;
+
+  // ── Nền: trắng bình thường, tối hơn một chút nếu ô ĐÃ CÓ CHỦ — dễ phân biệt ô còn trống
+  // với ô đã bị mua chỉ cần liếc qua, không cần nhìn kỹ viền màu đội mới nhận ra.
+  ctx.fillStyle = owner!==null ? "#e4ded0" : "#ffffff"; ctx.fillRect(tx,ty,tw,th);
+  ctx.strokeStyle="#000"; ctx.lineWidth=0.8; ctx.strokeRect(tx,ty,tw,th);
 
   // ── Thanh màu loại đất (property, không phải góc) ──
   if(tile.type==="property" && !isCorner){
@@ -1274,8 +1278,8 @@ function drawTile(tile, idx, pos, ts){
       const pSz = fitFont(`Mua:${tile.price}$`, tw*0.85, 700, nSz*0.72, "Nunito");
       ctx.fillStyle="#c0392b";
       ctx.fillText(`Mua:${tile.price}$`, cxc, cyc+nSz*0.85);
-      const rSz = fitFont(`MB:${displayRent}$`, tw*0.85, 700, pSz, "Nunito");
-      ctx.fillText(`MB:${displayRent}$`, cxc, cyc+nSz*0.85+rSz*1.15);
+      const rSz = fitFont(`Phí thuê:${displayRent}$`, tw*0.85, 700, pSz, "Nunito");
+      ctx.fillText(`Phí thuê:${displayRent}$`, cxc, cyc+nSz*0.85+rSz*1.15);
     } else {
       // Ô góc đặc biệt: Tù / Xuất phát
       const iconMap={jail:"🚔",tax:"💸",start:"🚩",state:"⚡"};
@@ -1296,16 +1300,9 @@ function drawTile(tile, idx, pos, ts){
     if(side==='left')   { cX=tx+BAND; cW=tw-BAND; }
     const cxc=cX+cW/2, cyc=cY+cH/2;
 
-    // Xoay text cho ô top/bottom để dùng chiều DÀI (92px) thay vì chiều ngắn (64px)
-    // → text rộng hơn nhiều, đọc dễ hơn
-    if(side==='top'||side==='bottom'){
-      ctx.translate(cxc,cyc);
-      ctx.rotate(side==='top' ? Math.PI/2 : -Math.PI/2);
-      ctx.translate(-cxc,-cyc);
-    }
-    // Sau khi xoay: chiều ngang available = cH (92-14=78px) cho top/bottom
-    //               chiều ngang available = cW (92-14=78px) cho left/right (không xoay)
-    const maxW = (side==='top'||side==='bottom') ? cH*0.9 : cW*0.9;
+    // Không xoay chữ nữa — SW đã tăng lên 78px nên chiều ngang (cW) đủ rộng để đọc chữ nằm
+    // ngang bình thường ở cả 4 cạnh, không cần "nằm dọc" như trước nữa.
+    const maxW = cW*0.9;
     const BASE  = Math.max(11, Math.min(cW,cH)*0.19);
 
     if(tile.type==="property"){
@@ -1324,8 +1321,8 @@ function drawTile(tile, idx, pos, ts){
       ctx.fillStyle="#c0392b";
       const priceY = cyc + gap*(lines.length===1 ? 0.5 : 0.9);
       ctx.fillText(`Mua:${tile.price}$`, cxc, priceY);
-      const rentSz = fitFont(`MB:${displayRent}$`, maxW*0.9, 700, priceSz, "Nunito");
-      ctx.fillText(`MB:${displayRent}$`, cxc, priceY + rentSz*1.15);
+      const rentSz = fitFont(`Phí thuê:${displayRent}$`, maxW*0.9, 700, priceSz, "Nunito");
+      ctx.fillText(`Phí thuê:${displayRent}$`, cxc, priceY + rentSz*1.15);
     } else if(tile.type==="tax"){
       const lines=wrapText(tile.name, maxW, 700, BASE, "Nunito");
       const nSz=fitFont(lines[0], maxW, 700, BASE, "Nunito");
@@ -1869,7 +1866,7 @@ function renderPlayers(){
     if(p.jailTurns>0) tags+=`<span class="tag jail">🚔 Tù ${p.jailTurns}</span>`;
     let statusText="";
     if(p.status==="eliminated") statusText=" (Đã bị loại)";
-    div.innerHTML=`<span class="dot" style="background:${p.color}"></span><b>${p.name}</b>${statusText} ${tags}<br/>
+    div.innerHTML=`<span class="dot" style="background:${p.color}; display:inline-flex; align-items:center; justify-content:center; overflow:hidden;"><img src="./assets/token-${p.id}.png" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;"/></span><b>${p.name}</b>${statusText} ${tags}<br/>
       💰 ${p.money.toLocaleString()}$ &nbsp; 🏠 ${p.properties.length} ô &nbsp; Σ ${totalAssets(state,p).toLocaleString()}$`;
     wrap.appendChild(div);
   });
@@ -2044,7 +2041,7 @@ function openBuyModal(idx){
   document.getElementById("buyLandType").textContent=landNames[tile.landType]||"";
   document.getElementById("buyPrice").textContent=`${tile.price.toLocaleString()}$`;
   document.getElementById("buyRent").textContent=`${tile.rent.toLocaleString()}$`;
-  document.getElementById("buyMoney").textContent=`Đội bạn hiện có: ${player.money.toLocaleString()}$`;
+  document.getElementById("buyMoney").textContent=`Đội bạn hiện có: ${player.money.toLocaleString()}$ — Không mua vẫn phải trả phí mặt bằng ${tile.rent.toLocaleString()}$ cho Nhà nước.`;
   document.getElementById("buyWarn").textContent=cantAfford?"⛔ Không đủ tiền để mua":"";
   document.getElementById("btnBuyYes").disabled=cantAfford;
   buyModal.classList.add("show");
@@ -2093,6 +2090,7 @@ document.getElementById("btnBuyNo").addEventListener("click", async ()=>{
     const result = await gameAction(GAME_ID, myPlayerId, "buy-no");
     state = result.state;
     if(state.lastEventId) lastSeenEventId = state.lastEventId;
+    queueEventBanners(result.events);
   } catch(err){
     alert("Lỗi server: " + err.message);
   }
