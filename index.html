@@ -259,6 +259,7 @@
         <li><i>🎲</i>Đổ xúc xắc, đi theo số điểm</li>
         <li><i>🏠</i>Đáp đất trống → được mua</li>
         <li><i>💸</i>Đáp đất người khác → trả tiền thuê</li>
+        <li><i>⏱</i>Hết 15s không quyết định mua hay thuê → tự động THUÊ</li>
         <li><i>🧾</i>Ô Thuế / Nhà nước → mất phí</li>
         <li><i>🚔</i>Vào Tù → Mất 2 lượt hoặc đổ đôi xúc xắc / trả phí 200$ để ra tù</li>
         <li><i>🏁</i>Qua Xuất phát → +200$</li>
@@ -350,7 +351,7 @@
     <p id="buyWarn" style="margin:0 0 8px; color:#e11d48; font-weight:700; font-size:13px; min-height:18px;"></p>
     <div id="buyCountdownWrap" style="margin-bottom:12px;">
       <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:700; color:#888; margin-bottom:4px;">
-        <span>⏱ Tự động mua sau:</span><span id="buyCountdownNum" style="color:#7b3ff2;">15s</span>
+        <span>⏱ Tự động thuê (bỏ qua) sau:</span><span id="buyCountdownNum" style="color:#7b3ff2;">15s</span>
       </div>
       <div style="background:#e9e0ff; border-radius:999px; height:6px; overflow:hidden;">
         <div id="buyCountdownBar" style="height:100%; background:#7b3ff2; border-radius:999px; width:100%; transition:width .4s linear;"></div>
@@ -1070,7 +1071,7 @@ function renderAll(){
     document.body.prepend(pauseBanner);
   }
   pauseBanner.style.display = state.paused ? "block" : "none";
-  // Nếu modal mua đất đang mở nhưng state không còn pendingBuyTile nữa (đã tự mua khi hết 15s,
+  // Nếu modal mua đất đang mở nhưng state không còn pendingBuyTile nữa (đã tự thuê/bỏ qua khi hết 15s,
   // hoặc client khác đã xử lý xong) thì đóng modal lại NGAY, không chờ người chơi tự bấm nút.
   if(buyModal.classList.contains("show") && (state.pendingBuyTile===null || state.pendingBuyTile===undefined)){
     window.__pendingBuy=null; buyModal.classList.remove("show");
@@ -1690,12 +1691,13 @@ async function afkWatchdog(){
   if(!curPlayer || curPlayer.status !== "active") return;
   const now = Date.now();
 
-  // 1) Đang chờ quyết định mua đất mà quá hạn 15s → tự động MUA giúp (đúng hành vi mặc định cũ,
-  //    chỉ khác là giờ chạy được từ BẤT KỲ client nào, không riêng máy người đang tới lượt).
+  // 1) Đang chờ quyết định mua đất mà quá hạn 15s → tự động THUÊ giúp (KHÔNG mua, chỉ trả phí
+  //    mặt bằng = tiền thuê, giống hệt hành vi bấm "Bỏ qua") — chạy được từ BẤT KỲ client nào,
+  //    không riêng máy người đang tới lượt.
   if(state.pendingBuyTile !== null && state.pendingBuyTile !== undefined && state.pendingBuyExpireAt && now >= state.pendingBuyExpireAt){
     afkNudgeInFlight = true;
     try{
-      const r = await gameAction(GAME_ID, curId, "buy-yes");
+      const r = await gameAction(GAME_ID, curId, "buy-no");
       state = r.state; if(state.lastEventId) lastSeenEventId = state.lastEventId;
       queueEventBanners(r.events);
       if(!sequenceLocked) renderAll();
@@ -1754,7 +1756,7 @@ setInterval(()=>{
   afkWatchdog();
   const now = Date.now();
 
-  // ── Thanh đếm ngược mua đất (15s) — chỉ để HIỂN THỊ. Việc tự mua khi hết giờ giờ do
+  // ── Thanh đếm ngược mua đất (15s) — chỉ để HIỂN THỊ. Việc tự thuê (bỏ qua mua) khi hết giờ giờ do
   //    afkWatchdog() ở trên đảm nhiệm (chạy trên mọi client), không còn phụ thuộc riêng máy
   //    của người đang tới lượt nữa. ──
   const buyEl    = document.getElementById("buyCountdownBar");
