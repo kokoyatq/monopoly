@@ -49,6 +49,7 @@
     <button class="btn-main" id="btnRandomOrder">🎲 Random thứ tự đi (1 lần, sẽ khóa)</button>
     <button class="btn-main" id="btnNextPhase">▶️ Chuyển giai đoạn tiếp theo</button>
     <button class="btn-bad" id="btnAntiTrust">⚖️ Áp thuế chống độc quyền (GĐ4)</button>
+    <button class="btn-admin" id="btnPauseGame">⏸️ Tạm dừng game</button>
     <button class="btn-bad" id="btnEndGame">🏁 Kết thúc & Xếp hạng</button>
     <button class="btn-bad" id="btnResetGame" style="background:#450a0a; border:2px solid var(--bad);">🔄 Reset toàn bộ game</button>
   </div>
@@ -169,6 +170,7 @@ function render(){
   renderPlayerTable();
   renderSelects();
   renderLog();
+  updatePauseButtonLabel();
 }
 
 function renderLobbyStatus(){
@@ -256,7 +258,8 @@ function renderPlayerTable(){
     const mono = isMonopoly(state,p);
     const weak = isWeak(state,p);
     const mult = p.properties.length>0 ? state.tiles[p.properties[0]].rentMultiplier : 1;
-    const canKick = p.joined && p.status!=="eliminated";
+    const canKick = p.joined && p.status!=="eliminated" && !kickInProgress.has(p.id);
+    const kicking = kickInProgress.has(p.id);
     html += `<tr>
       <td style="color:${p.color}">●</td><td>${p.name}</td>
       <td>${p.money.toLocaleString()}$</td>
@@ -266,7 +269,7 @@ function renderPlayerTable(){
       <td>${connectionBadge(p)}</td>
       <td>${weak?'<span class="tag weak">Yếu</span>':""}${mono?'<span class="tag mono">Độc quyền</span>':""}${p.jailTurns>0?`<span class="tag jail">Tù ${p.jailTurns}</span>`:""}</td>
       <td>${mono?`<button class="btn-bad" style="padding:4px 8px;font-size:11px;" onclick="toggleMonopolyRent(${p.id})">${mult===2?"Hủy x2":"Bật x2"}</button>`:"-"}</td>
-      <td>${canKick?`<button class="btn-bad" style="padding:4px 8px;font-size:11px;" onclick="kickPlayer(${p.id})">👢 Kick</button>`:"-"}</td>
+      <td>${canKick?`<button class="btn-bad" style="padding:4px 8px;font-size:11px;" onclick="kickPlayer(${p.id})">👢 Kick</button>`:(kicking?`<button class="btn-bad" disabled style="padding:4px 8px;font-size:11px;">⏳ Đang kick...</button>`:"-")}</td>
     </tr>`;
   });
   table.innerHTML = html;
@@ -294,27 +297,42 @@ function localAdvanceTurn(s){
   s.pendingBuyExpireAt = null;
 }
 
+const kickInProgress = new Set(); // chặn double-click: đang xử lý kick người này rồi thì bấm thêm không làm gì
 async function kickPlayer(pid){
   const p = state.players[pid];
   if(!p || p.status==="eliminated") return;
+  if(kickInProgress.has(pid)) return; // đang xử lý dở, bấm thêm bỏ qua luôn thay vì mở confirm() lần 2
   const ok = confirm(`⚠️ Chắc chắn muốn KICK "${p.name}" khỏi game?\nĐội này sẽ bị loại (mất hết đất, không thể chơi tiếp). Dùng khi đội này mất kết nối/vắng mặt thật sự.`);
   if(!ok) return;
-  await mutateState(s=>{
-    const pl = s.players[pid];
-    if(!pl || pl.status==="eliminated") return;
-    const wasCurrentTurn = s.turnOrderLocked && !s.gameEnded && s.turnOrder && s.turnOrder.length>0 && s.turnOrder[s.currentTurnPos]===pid;
-    pl.status="eliminated";
-    s.tiles.forEach(t=>{ if(t.owner===pid) t.owner=null; });
-    pl.properties=[];
-    pl.jailTurns=0;
-    addLog(s, `👢 MC đã KICK ${pl.name} khỏi game (mất kết nối/vắng mặt).`);
-    // Nếu đúng lượt của người vừa bị kick thì đẩy lượt sang đội tiếp theo còn đang chơi luôn,
-    // dùng ĐÚNG logic advanceTurn() thật ở server (kể cả case hết người active → tự kết thúc game).
-    if(wasCurrentTurn){
-      s.pendingBuyTile = null; // xoá quyết định mua đất còn treo của người vừa bị kick (nếu có)
-      localAdvanceTurn(s);
-    }
-  });
+  kickInProgress.add(pid);
+  renderPlayerTable(); // vô hiệu hoá nút Kick của hàng này ngay, tránh bấm thêm lần nữa trong lúc đang xử lý
+  try{
+    const newState = await mutateState(s=>{
+      const pl = s.players[pid];
+      if(!pl || pl.status==="eliminated") return;
+      const wasCurrentTurn = s.turnOrderLocked && !s.gameEnded && s.turnOrder && s.turnOrder.length>0 && s.turnOrder[s.currentTurnPos]===pid;
+      pl.status="eliminated";
+      s.tiles.forEach(t=>{ if(t.owner===pid) t.owner=null; });
+      pl.properties=[];
+      pl.jailTurns=0;
+      addLog(s, `👢 MC đã KICK ${pl.name} khỏi game (mất kết nối/vắng mặt).`);
+      // Nếu đúng lượt của người vừa bị kick thì đẩy lượt sang đội tiếp theo còn đang chơi luôn,
+      // dùng ĐÚNG logic advanceTurn() thật ở server (kể cả case hết người active → tự kết thúc game).
+      if(wasCurrentTurn){
+        s.pendingBuyTile = null; // xoá quyết định mua đất còn treo của người vừa bị kick (nếu có)
+        localAdvanceTurn(s);
+      }
+    });
+    // QUAN TRỌNG: cập nhật ngay `state` cục bộ của admin + render() ngay lập tức, KHÔNG đợi
+    // Realtime báo về (round-trip này có thể mất vài trăm ms tới vài giây tuỳ mạng) — đây chính
+    // là lý do trước đây phải bấm Kick nhiều lần mới "thấy" có tác dụng: mutateState() đã ghi
+    // xong vào DB ngay từ lần bấm đầu tiên, chỉ là admin chưa THẤY kết quả nên tưởng chưa kick được.
+    if(newState){ state = newState; render(); }
+  }catch(e){
+    alert("❌ Lỗi khi kick: " + (e.message || e));
+  }finally{
+    kickInProgress.delete(pid);
+  }
 }
 
 async function toggleMonopolyRent(pid){
@@ -412,6 +430,41 @@ document.getElementById("btnAntiTrust").addEventListener("click", async ()=>{
     const share = Math.floor(totalTax/Math.max(poorest.length,1));
     poorest.forEach(p=>{ p.money+=share; addLog(s, `💚 ${p.name} nhận hỗ trợ ${share.toLocaleString()}$.`); });
   });
+});
+
+// ─── Tạm dừng / Tiếp tục game ───
+// An toàn với MỌI thời điểm pause (đang chờ roll, đang chờ mua đất, đang ở tù):
+// - Khi PAUSE: chỉ set cờ `state.paused = true` + lưu `pausedAt`. Không đụng gì tới
+//   turnStartedAt/pendingBuyExpireAt — tức là đồng hồ đếm ngược ở phía client vẫn giữ
+//   nguyên mốc cũ, nhưng afkWatchdog() ở index.html sẽ return ngay nếu state.paused
+//   (xem sửa ở index.html) — nghĩa là KHÔNG auto-skip-lượt, KHÔNG auto-mua-đất, KHÔNG
+//   auto-jail-wait trong lúc pause, dù đang ở bất kỳ giai đoạn nào của lượt chơi.
+// - Khi RESUME: cộng đúng khoảng thời gian đã pause (Date.now() - pausedAt) vào lại
+//   turnStartedAt và pendingBuyExpireAt (nếu có) — nhờ vậy người chơi được TRẢ LẠI
+//   chính xác số giây họ còn dư trước khi bị pause, không bị mất thời gian, không bị
+//   tính gian lận hết giờ ngay khi vừa resume.
+function updatePauseButtonLabel(){
+  const btn = document.getElementById("btnPauseGame");
+  if(!btn || !state) return;
+  btn.textContent = state.paused ? "▶️ Tiếp tục game" : "⏸️ Tạm dừng game";
+}
+document.getElementById("btnPauseGame").addEventListener("click", async ()=>{
+  const wasPaused = state.paused;
+  const newState = await mutateState(s=>{
+    if(!s.paused){
+      s.paused = true;
+      s.pausedAt = Date.now();
+      addLog(s, "⏸️ MC đã TẠM DỪNG game.");
+    } else {
+      const pausedMs = Date.now() - (s.pausedAt || Date.now());
+      if(s.turnStartedAt) s.turnStartedAt += pausedMs;
+      if(s.pendingBuyExpireAt) s.pendingBuyExpireAt += pausedMs;
+      s.paused = false;
+      s.pausedAt = null;
+      addLog(s, `▶️ MC đã cho game TIẾP TỤC (đã tạm dừng ${Math.round(pausedMs/1000)}s).`);
+    }
+  });
+  if(newState){ state = newState; render(); } // cập nhật ngay, không đợi round-trip Realtime
 });
 
 document.getElementById("btnMAConfirm").addEventListener("click", async ()=>{

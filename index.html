@@ -1056,6 +1056,17 @@ function getLiveElapsedSec(){
 /* ─── Render all ─── */
 function renderAll(){
   if(!state) return;
+  // Banner "Tạm dừng" cho MỌI người chơi biết vì sao không thấy gì xảy ra (roll/mua đất/tù đều
+  // bị chặn ở server lúc pause) — tạo 1 lần duy nhất, chỉ toggle hiện/ẩn theo state.paused.
+  let pauseBanner = document.getElementById("pauseBanner");
+  if(!pauseBanner){
+    pauseBanner = document.createElement("div");
+    pauseBanner.id = "pauseBanner";
+    pauseBanner.style.cssText = "position:fixed; top:0; left:0; right:0; z-index:9999; background:#7c2d12; color:#fff; text-align:center; font-weight:bold; padding:10px; font-size:15px; display:none;";
+    pauseBanner.textContent = "⏸️ GAME ĐANG TẠM DỪNG — chờ MC tiếp tục...";
+    document.body.prepend(pauseBanner);
+  }
+  pauseBanner.style.display = state.paused ? "block" : "none";
   // Nếu modal mua đất đang mở nhưng state không còn pendingBuyTile nữa (đã tự mua khi hết 15s,
   // hoặc client khác đã xử lý xong) thì đóng modal lại NGAY, không chờ người chơi tự bấm nút.
   if(buyModal.classList.contains("show") && (state.pendingBuyTile===null || state.pendingBuyTile===undefined)){
@@ -1674,6 +1685,7 @@ try{
 let afkNudgeInFlight = false;
 async function afkWatchdog(){
   if(!state || !state.turnOrderLocked || state.gameEnded) return;
+  if(state.paused) return; // MC đang tạm dừng — không auto-skip/auto-mua/auto-jail-wait lúc này
   if(afkNudgeInFlight) return;
   const curId = currentPlayerId(state);
   if(curId === null) return;
@@ -1709,8 +1721,12 @@ async function afkWatchdog(){
     if(state.turnStartedAt && now - state.turnStartedAt >= turnTimeout){
       afkNudgeInFlight = true;
       try{
-        const r = await gameAction(GAME_ID, curId, "jail-wait");
+        const r = await gameAction(GAME_ID, curId, "jail-wait", { reason: isOffline ? "disconnect" : "afk" });
         state = r.state; if(state.lastEventId) lastSeenEventId = state.lastEventId;
+        // Banner lấy từ server (r.events) — server tự soạn nội dung khác nhau tuỳ `reason`, đảm
+        // bảo MỌI người xem (kể cả màn hình trình chiếu) thấy ĐÚNG cùng 1 nội dung nhất quán,
+        // không phụ thuộc việc máy nào tình cờ là máy kích hoạt watchdog trước.
+        queueEventBanners(r.events);
         if(!sequenceLocked) renderAll();
       }catch(e){}
       afkNudgeInFlight = false;
@@ -1723,8 +1739,11 @@ async function afkWatchdog(){
   if(state.turnStartedAt && now - state.turnStartedAt >= turnTimeout){
     afkNudgeInFlight = true;
     try{
-      const r = await gameAction(GAME_ID, curId, "skip-turn");
+      const r = await gameAction(GAME_ID, curId, "skip-turn", { reason: isOffline ? "disconnect" : "afk" });
       state = r.state; if(state.lastEventId) lastSeenEventId = state.lastEventId;
+      // Banner lấy từ server (r.events) — server tự soạn nội dung khác nhau tuỳ `reason`, đảm bảo
+      // MỌI người xem (kể cả màn hình trình chiếu) thấy ĐÚNG cùng 1 nội dung nhất quán, không phụ
+      // thuộc việc máy nào tình cờ là máy kích hoạt watchdog trước.
       queueEventBanners(r.events);
       if(!sequenceLocked) renderAll();
     }catch(e){}

@@ -22,12 +22,43 @@ async function saveState(state){
 // Trả về state mới để nơi gọi cập nhật lại biến state toàn cục.
 // Mọi action liên quan lượt chơi (roll/jail/mua đất) đã chuyển qua gameAction() (Edge Function
 // có validate quyền + optimistic lock chống ghi đè).
-async function mutateState(mutatorFn){
-  const state = await loadState();
-  if(!state) return null;
-  mutatorFn(state);
-  await saveState(state);
-  return state;
+//
+// QUAN TRỌNG — ĐÃ SỬA: bản trước đây saveState() ghi thẳng, KHÔNG check cột "version", nên khi
+// 2 nơi cùng ghi gần như đồng thời (ví dụ: MC bấm Kick đúng lúc admin.html đang tự động ghi
+// elapsedSec mỗi giây trong tick()) thì ai ghi SAU sẽ xoá mất thay đổi của người ghi TRƯỚC — dù
+// thao tác trước đó (như Kick) đã "thành công" một cách âm thầm rồi bị đè mất, khiến phải bấm
+// lại nhiều lần mới "ăn". Giờ dùng ĐÚNG cơ chế optimistic-lock + retry y hệt Edge Function
+// index.ts (đọc kèm version, ghi có điều kiện .eq("version", version), đụng version thì đọc lại
+// từ đầu và làm lại — không đời nào ghi đè mất thao tác của người khác nữa).
+async function mutateState(mutatorFn, maxRetries = 8){
+  for(let attempt = 0; attempt < maxRetries; attempt++){
+    const {data, error} = await supabaseClient.from("games").select("state, version").eq("id", GAME_ID).single();
+    if(error){ console.error("mutateState (đọc) lỗi", error); return null; }
+
+    const state = data.state;
+    const version = data.version ?? 0;
+    mutatorFn(state);
+
+    const {data: updated, error: updateError} = await supabaseClient
+      .from("games")
+      .update({ state, version: version + 1, updated_at: new Date().toISOString() })
+      .eq("id", GAME_ID)
+      .eq("version", version)
+      .select("version");
+
+    if(updateError){
+      console.error("mutateState (ghi) lỗi", updateError);
+      alert("Lỗi lưu dữ liệu: " + updateError.message);
+      return null;
+    }
+    if(updated && updated.length > 0){
+      return state; // ghi thành công, không bị ai đụng version
+    }
+    // Bị đụng version (có nơi khác vừa ghi trước) → đọc lại từ đầu, thử lại — KHÔNG báo lỗi cho
+    // người dùng, retry vài lần gần như tức thì là xong, không cần bấm lại nút.
+  }
+  alert("Server đang bận do nhiều nơi cùng ghi dữ liệu cùng lúc, hãy thử lại thao tác.");
+  return null;
 }
 
 function subscribeToChanges(onChange){
@@ -41,7 +72,7 @@ function subscribeToChanges(onChange){
 
 // Gọi Edge Function cho mọi action có liên quan đến lượt chơi (roll, jail, mua đất...).
 // Server tự đọc state mới nhất, validate đúng lượt + đủ điều kiện, tính toán, rồi ghi đè 1 lần.
-async function gameAction(roomId, playerId, action) {
+async function gameAction(roomId, playerId, action, extra) {
   const res = await fetch(
     `${SUPABASE_URL}/functions/v1/roll-dice`,
     {
@@ -50,7 +81,7 @@ async function gameAction(roomId, playerId, action) {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({ roomId, playerId, action }),
+      body: JSON.stringify({ roomId, playerId, action, ...(extra || {}) }),
     }
   );
   const data = await res.json();
