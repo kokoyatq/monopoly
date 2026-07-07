@@ -257,9 +257,9 @@
       <h3>📜 Luật chơi</h3>
       <ul>
         <li><i>🎲</i>Đổ xúc xắc, đi theo số điểm</li>
-        <li><i>🏠</i>Đáp đất trống → được mua, không mua phải đóng phí mặt bằng</li>
-        <li><i>💸</i>Đáp đất người khác → trả tiền thuê cho nguời đó</li>
-        <li><i>⏱</i>Hết 15s không quyết định mua hay thuê → tự động thuê</li>
+        <li><i>🏠</i>Đáp đất trống → được mua</li>
+        <li><i>💸</i>Đáp đất người khác → trả tiền thuê</li>
+        <li><i>⏱</i>Hết 15s không quyết định mua hay thuê → tự động THUÊ</li>
         <li><i>🧾</i>Ô Thuế / Nhà nước → mất phí</li>
         <li><i>🚔</i>Vào Tù → Mất 2 lượt hoặc đổ đôi xúc xắc / trả phí 200$ để ra tù</li>
         <li><i>🏁</i>Qua Xuất phát → +200$</li>
@@ -732,7 +732,20 @@ async function init(){
   }
   state.players.forEach(p=> displayedPos[p.id] = p.position);
   lastSeenEventId = state.lastEventId || null;
+  lastSeenDiceRollId = state.diceRollId || null; // đồng bộ ngay lúc load, tránh isNewRoll bị hiểu nhầm ở lần cập nhật realtime đầu tiên
   tryAutoRejoin();
+  // Seed baseline từ state đã tải, tránh phát âm thanh/hiệu ứng "vừa xảy ra" giả ngay khi mới
+  // load/reload trang giữa ván đang chơi (VD: reload đúng lúc đang là lượt mình sẽ không còn
+  // bị phát nhầm "your_turn"; reload sau khi game đã bắt đầu/kết thúc/đã có người độc quyền hay
+  // đang yếu từ trước cũng không còn bị coi là "vừa mới chuyển trạng thái" nữa).
+  lastMyTurnState = myPlayerId !== null && currentPlayerId(state) === myPlayerId
+                    && state.players[myPlayerId] && state.players[myPlayerId].status === "active";
+  lastTurnOrderLocked = !!state.turnOrderLocked;
+  lastGameEnded = !!state.gameEnded;
+  state.players.forEach(p=>{
+    if(p.status==="active" && isMonopoly(state,p)) lastMonopolySet.add(p.id);
+    if(p.status==="active" && isWeak(state,p)) warnedWeak.add(p.id);
+  });
   renderAll();
   // Khôi phục buy modal nếu người chơi reload trong lúc đang chờ quyết định mua đất
   checkPendingBuy();
