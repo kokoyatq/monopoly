@@ -76,19 +76,19 @@
 <div class="panel">
   <h3>🤝 M&A — Thu mua doanh nghiệp yếu</h3>
   <div class="row-flex">
-    <select id="maBuyer"></select>
-    <select id="maSeller"></select>
-    <input type="number" id="maPrice" placeholder="Giá thoả thuận ($)"/>
+    <div>
+      <label style="font-size:11px; opacity:.7; display:block; margin-bottom:3px;">Bên mua</label>
+      <select id="maBuyer"></select>
+    </div>
+    <div>
+      <label style="font-size:11px; opacity:.7; display:block; margin-bottom:3px;">Bên bán</label>
+      <select id="maSeller"></select>
+    </div>
+    <div>
+      <label style="font-size:11px; opacity:.7; display:block; margin-bottom:3px;">Giá thoả thuận</label>
+      <input type="number" id="maPrice" placeholder="Giá thoả thuận ($)"/>
+    </div>
     <button class="btn-good" id="btnMAConfirm">Xác nhận giao dịch</button>
-  </div>
-</div>
-
-<div class="panel">
-  <h3>✏️ Sửa tay số dư</h3>
-  <div class="row-flex">
-    <select id="editPlayerSelect"></select>
-    <input type="number" id="editMoneyInput" placeholder="Số tiền mới"/>
-    <button class="btn-main" id="btnEditMoney">Cập nhật</button>
   </div>
 </div>
 
@@ -346,12 +346,11 @@ async function toggleMonopolyRent(pid){
 }
 
 function renderSelects(){
-  const editSel=document.getElementById("editPlayerSelect");
   const maBuyer=document.getElementById("maBuyer");
   const maSeller=document.getElementById("maSeller");
   const prioritySelect=document.getElementById("prioritySelect");
 
-  [editSel,maBuyer,maSeller].forEach(sel=>{
+  [maBuyer,maSeller].forEach(sel=>{
     const prevValue = sel.value;
     sel.innerHTML="";
     state.players.forEach(p=>{
@@ -506,17 +505,6 @@ document.getElementById("btnMAConfirm").addEventListener("click", async ()=>{
     addLog(s, `🤝 M&A: ${buyer.name} mua ${seller.name} giá ${price.toLocaleString()}$. ${seller.name} giữ ${Math.round(equity*100)}% cổ phần.`);
   });
   document.getElementById("maPrice").value="";
-});
-
-document.getElementById("btnEditMoney").addEventListener("click", async ()=>{
-  const pid = parseInt(document.getElementById("editPlayerSelect").value);
-  const val = parseInt(document.getElementById("editMoneyInput").value);
-  if(isNaN(val)) return;
-  await mutateState(s=>{
-    s.players[pid].money = val;
-    addLog(s, `🛠️ MC sửa tay: ${s.players[pid].name} → ${val.toLocaleString()}$`);
-  });
-  document.getElementById("editMoneyInput").value="";
 });
 
 document.getElementById("btnEndGame").addEventListener("click", async ()=>{
