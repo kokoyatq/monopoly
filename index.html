@@ -260,7 +260,7 @@
         <li><i>🏠</i>Đáp đất trống → được mua</li>
         <li><i>💸</i>Đáp đất người khác → trả tiền thuê</li>
         <li><i>🧾</i>Ô Thuế / Nhà nước → mất phí</li>
-        <li><i>🚔</i>Vào Tù → chờ, trả tiền hoặc đổ đôi để ra</li>
+        <li><i>🚔</i>Vào Tù → Mất 2 lượt hoặc đổ đôi xúc xắc / trả phí 200$ để ra tù</li>
         <li><i>🏁</i>Qua Xuất phát → +200$</li>
       </ul>
     </div>
@@ -1895,7 +1895,11 @@ function updateRollButton(){
   } else {
     btn.textContent = isMyTurn ? "🎲🎲 Đổ xúc xắc (lượt của bạn!)" : `🎲🎲 Đang chờ ${state.players[curId]?.name||""}`;
   }
-  if(isMyTurn&&state.players[curId].jailTurns>0&&!jailModal.classList.contains("show")) openJailModal();
+  // Chỉ mở jailModal khi ĐÚNG lượt mình và còn đang ở tù; các trường hợp khác (đã hết lượt do
+  // afkWatchdog tự động jail-wait giúp, hoặc đã ra tù) phải TỰ ĐÓNG modal, không để treo màn hình.
+  const iAmDecidingJail = isMyTurn && state.players[curId].jailTurns>0;
+  if(iAmDecidingJail && !jailModal.classList.contains("show")) openJailModal();
+  if(!iAmDecidingJail && jailModal.classList.contains("show")) jailModal.classList.remove("show");
 }
 function renderResultModal(){
   const modal=document.getElementById("resultModal");
@@ -1993,9 +1997,9 @@ document.getElementById("btnRoll").addEventListener("click", async ()=>{
               startBuyTimerIfNeeded(result.state.pendingBuyTile);
               openBuyModal(result.state.pendingBuyTile);
             } else if(landedTile && landedTile.type === "tax"){
-              taxModal.classList.add("show");
+              openTaxModal();
             } else if(landedTile && landedTile.type === "state"){
-              stateModal.classList.add("show");
+              openStateModal();
             } else if(landedTile && landedTile.type === "property" && landedTile.owner !== null && landedTile.owner !== myPlayerId){
               const rent = (landedTile.rent||0) * (landedTile.rentMultiplier||1);
               openRentModal(landedTile.name, result.state.players[landedTile.owner].name, rent);
@@ -2049,23 +2053,46 @@ function openBuyModal(idx){
 
 /* ─── Rent modal (thông báo trả tiền thuê — chỉ dùng để thông báo, không có action server vì server đã tự trừ rồi) ─── */
 const rentModal=document.getElementById("rentModal");
+const NOTICE_MODAL_AUTO_DISMISS_MS = 8000; // các modal chỉ-để-thông-báo (rent/state/tax) tự đóng sau 8s nếu người chơi không bấm OK, tránh treo màn hình vĩnh viễn
+let rentModalTimer=null;
 function openRentModal(tileName, ownerName, amount){
   document.getElementById("rentTitle").textContent=`💸 Trả tiền thuê — ${tileName}`;
   document.getElementById("rentDesc").textContent=`Đội của bạn đã dừng trên đất của ${ownerName}.`;
   document.getElementById("rentAmount").textContent=`-${amount.toLocaleString()}$`;
   rentModal.classList.add("show");
+  clearTimeout(rentModalTimer);
+  rentModalTimer=setTimeout(()=>rentModal.classList.remove("show"), NOTICE_MODAL_AUTO_DISMISS_MS);
 }
 document.getElementById("btnRentOk").addEventListener("click",()=>{
+  clearTimeout(rentModalTimer);
   rentModal.classList.remove("show");
 });
 
 /* ─── State modal (Điện Lực / Nước) ─── */
 const stateModal=document.getElementById("stateModal");
-document.getElementById("btnStateOk").addEventListener("click",()=>stateModal.classList.remove("show"));
+let stateModalTimer=null;
+function openStateModal(){
+  stateModal.classList.add("show");
+  clearTimeout(stateModalTimer);
+  stateModalTimer=setTimeout(()=>stateModal.classList.remove("show"), NOTICE_MODAL_AUTO_DISMISS_MS);
+}
+document.getElementById("btnStateOk").addEventListener("click",()=>{
+  clearTimeout(stateModalTimer);
+  stateModal.classList.remove("show");
+});
 
 /* ─── Tax modal (Thuế) ─── */
 const taxModal=document.getElementById("taxModal");
-document.getElementById("btnTaxOk").addEventListener("click",()=>taxModal.classList.remove("show"));
+let taxModalTimer=null;
+function openTaxModal(){
+  taxModal.classList.add("show");
+  clearTimeout(taxModalTimer);
+  taxModalTimer=setTimeout(()=>taxModal.classList.remove("show"), NOTICE_MODAL_AUTO_DISMISS_MS);
+}
+document.getElementById("btnTaxOk").addEventListener("click",()=>{
+  clearTimeout(taxModalTimer);
+  taxModal.classList.remove("show");
+});
 document.getElementById("btnBuyYes").addEventListener("click", async ()=>{
   if(sequenceLocked) return;
   sequenceLocked=true; updateRollButton();
@@ -2149,9 +2176,9 @@ document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
                 startBuyTimerIfNeeded(state.pendingBuyTile);
                 openBuyModal(state.pendingBuyTile);
               } else if(landedTile && landedTile.type === "tax"){
-                taxModal.classList.add("show");
+                openTaxModal();
               } else if(landedTile && landedTile.type === "state"){
-                stateModal.classList.add("show");
+                openStateModal();
               } else if(landedTile && landedTile.type === "property" && landedTile.owner !== null && landedTile.owner !== myPlayerId){
                 const rent = (landedTile.rent||0) * (landedTile.rentMultiplier||1);
                 openRentModal(landedTile.name, state.players[landedTile.owner].name, rent);
