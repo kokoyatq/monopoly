@@ -1,158 +1,81 @@
 /* ============================================================
-
    game-data.js — dữ liệu & luật chơi dùng chung
-
    (board.html và admin.html đều load file này)
-
    ============================================================ */
 
-
-
 const NUM_PLAYERS = 8;
-
 const START_MONEY = 1500;
-
 const PASS_START_BONUS = 200;
-
 const TAX_AMOUNT = 100;
-
 const STATE_FEE = 100;
-
 const WEAK_THRESHOLD = 300;
-
 const MONOPOLY_TILE_PCT = 0.4;
-
 const ANTITRUST_TAX = 300;
-
 const PRIORITY_FEE = 50;
-
 const PHASE_NAMES = [
-
   "1 - Cạnh tranh tự do",
-
   "2 - Hình thành độc quyền",
-
   "3 - Doanh nghiệp độc quyền",
-
   "4 - Nhà nước can thiệp"
-
 ];
-
 const PHASE_SUGGEST_SECONDS = [10*60, 20*60, 25*60, 28*60];
 
-
-
 const RAW_TILES = [
-
   ["Chăn nuôi gà","property","NN",250,90],
-
   ["Cty điện tử","property","TN",350,120],
-
   ["Trang trại lúa","property","NN",120,40],
-
   ["Trường học","property","DV",250,90],
-
   ["Chuỗi bán lẻ","property","TN",180,60],
-
   ["Nước","state",null,0,0],
-
   ["Trồng cao su","property","NN",350,120],
-
   ["Ngân hàng","property","DV",180,60],
-
   ["Logistic","property","TN",250,90],
-
   ["Cty tư vấn","property","DV",350,120],
-
   ["Vào Tù","jail",null,0,0],
-
   ["Trồng Chè","property","NN",350,120],
-
   ["Siêu thị","property","TN",180,60],
-
   ["Bệnh viện","property","DV",250,90],
-
   ["Trồng hoa","property","NN",250,90],
-
   ["Cty ô tô","property","TN",350,120],
-
   ["Thuế","tax",null,0,0],
-
   ["Chăn nuôi heo","property","NN",180,60],
-
   ["Cty bảo hiểm","property","DV",400,180],
-
   ["Trang trại rau","property","NN",120,40],
-
   ["Xuất phát","start",null,0,0],
-
   ["Cty truyền thông","property","DV",350,120],
-
   ["Nhà máy may","property","TN",250,90],
-
   ["Khách sạn","property","DV",120,40],
-
   ["Cty thực phẩm","property","TN",250,90],
-
   ["Trồng điều","property","NN",400,180],
-
   ["Bán tạp hóa","property","TN",120,40],
-
   ["Nhà hàng","property","DV",180,60],
-
   ["Trồng cà phê","property","NN",350,120],
-
   ["Cty du lịch","property","DV",250,90],
-
   ["Vào Tù","jail",null,0,0],
-
   ["Cty viễn thông","property","TN",400,180],
-
   ["Vườn trái cây","property","NN",180,60],
-
   ["Cty dược phẩm","property","TN",400,180],
-
   ["Chăn nuôi bò","property","NN",180,60],
-
   ["Hàng không","property","DV",250,90],
-
   ["Điện Lực","state",null,0,0],
-
   ["Nuôi tôm","property","NN",250,90],
-
   ["Vật liệu xây dựng","property","TN",250,90],
-
   ["Cty công nghệ","property","TN",350,120],
-
 ];
-
 const TOTAL_TILES = RAW_TILES.length; // 40
-
+const PROPERTY_TOTAL = RAW_TILES.filter(t=>t[1]==="property").length; // 34 — chỉ tính ô mua được, không tính Xuất phát/Thuế/Nhà nước/Tù
 const START_TILE_INDEX = RAW_TILES.findIndex(t=>t[1]==="start"); // 20
 
-
-
 const LAND_COLOR = {NN:"#4ade80", TN:"#fb923c", DV:"#c084fc"};
-
 const PLAYER_COLORS = ["#ef4444","#3b82f6","#22c55e","#eab308","#a855f7","#06b6d4","#f97316","#ec4899"];
 
-
-
 const TYPE_TOTALS = {NN:0, TN:0, DV:0};
-
 RAW_TILES.forEach(([,type,landType])=>{ if(type==="property") TYPE_TOTALS[landType]++; });
 
-
-
 function tileInfo(idx){
-
   const [name,type,landType,price,rent] = RAW_TILES[idx];
-
   return {idx,name,type,landType,price,rent};
-
 }
-
-
 
 // ---------------- TRẠNG THÁI BAN ĐẦU ----------------
 function createInitialState(){
@@ -195,46 +118,26 @@ function createInitialState(){
   };
 }
 
-
-
 // ---------------- HÀM TÍNH TOÁN DÙNG CHUNG ----------------
-
 function totalAssets(state, p){
-
   const propVal = p.properties.reduce((sum,i)=>sum+RAW_TILES[i][3],0);
-
   return p.money + propVal;
-
 }
-
-function isWeak(state, p){ return p.status==="active" && totalAssets(state,p) <= WEAK_THRESHOLD; }
-
+function isWeak(state, p){ return p.status==="active" && p.money <= WEAK_THRESHOLD; }
 function isMonopoly(state, p){
-
   if(p.status!=="active") return false;
-
-  if(p.properties.length >= Math.ceil(TOTAL_TILES*MONOPOLY_TILE_PCT)) return true;
-
+  // Điều kiện 1: sở hữu ≥ 40% tổng số Ô ĐẤT MUA ĐƯỢC (34 ô property — không tính Xuất phát/Thuế/Nhà nước/Tù vì các ô đó không bao giờ mua được)
+  if(p.properties.length >= Math.ceil(PROPERTY_TOTAL*MONOPOLY_TILE_PCT)) return true;
+  // Điều kiện 2: sở hữu đất TRẢI ĐỀU cả 3 nhóm — chỉ cần có ít nhất 1 ô mỗi nhóm NN/TN/DV
   const counts = {NN:0,TN:0,DV:0};
-
   p.properties.forEach(i=>{ const t=tileInfo(i); if(t.type==="property") counts[t.landType]++; });
-
-  return counts.NN===TYPE_TOTALS.NN || counts.TN===TYPE_TOTALS.TN || counts.DV===TYPE_TOTALS.DV;
-
+  return counts.NN>0 && counts.TN>0 && counts.DV>0;
 }
-
 function currentPlayerId(state){
-
   if(!state.turnOrderLocked) return null;
-
   return state.turnOrder[state.currentTurnPos];
-
 }
-
 function addLog(state, msg){
-
   state.log = [msg, ...state.log].slice(0,60);
-
 }
-
 function joinedPlayers(state){ return state.players.filter(p=>p.joined); }
