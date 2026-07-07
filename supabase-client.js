@@ -89,9 +89,34 @@ async function rollDice(roomId, playerId) {
 let presenceChannel = null;
 let presenceSubscribed = false;
 let myTrackedPlayerId = null;
+const presenceListeners = []; // các callback đăng ký qua subscribeOnlinePlayers(), gọi lại mỗi khi có sync mới
+
+function computeOnlineIds(){
+  if(!presenceChannel) return new Set();
+  const raw = presenceChannel.presenceState(); // { channelKey: [{playerId, at}, ...] }
+  const ids = new Set();
+  Object.values(raw).forEach(entries=>{
+    entries.forEach(e=>{ if(e && e.playerId !== undefined && e.playerId !== null) ids.add(e.playerId); });
+  });
+  return ids;
+}
+
 try{
   presenceChannel = supabaseClient.channel(`presence-${GAME_ID}`);
-}catch(e){ console.error("[presence] Không tạo được channel — tính năng online/offline sẽ không hoạt động, KHÔNG ảnh hưởng gì tới việc chơi game:", e); }
+  // QUAN TRỌNG — ĐÚNG THỨ TỰ CHUẨN CỦA SUPABASE: channel.on(...) PHẢI được đăng ký TRƯỚC
+  // channel.subscribe(). Bản trước đó gọi ngược lại (subscribe() trước, on() sau, xem
+  // ensurePresenceSubscribed() bên dưới) khiến sự kiện "sync" không được nhận đúng cách —
+  // đây là nguyên nhân admin cứ hiện mãi "Chưa rõ", và các máy người chơi nhận sai dữ liệu
+  // online/offline làm bỏ lượt sai (tưởng offline trong khi vẫn đang chơi bình thường).
+  presenceChannel.on("presence", {event:"sync"}, ()=>{
+    try{
+      const ids = computeOnlineIds();
+      presenceListeners.forEach(cb=>{
+        try{ cb(ids); }catch(e){ console.error("[presence] Lỗi trong 1 listener (bỏ qua):", e); }
+      });
+    }catch(e){ console.error("[presence] Lỗi khi tính danh sách online (bỏ qua):", e); }
+  });
+}catch(e){ console.error("[presence] Không tạo được channel — tính năng online/offline sẽ không hoạt động, KHÔNG ảnh hưởng gì tới việc chơi game:", e); presenceChannel = null; }
 
 function ensurePresenceSubscribed(){
   try{
@@ -123,22 +148,15 @@ async function trackMyPresence(playerId){
 }
 
 // Gọi từ index.html (mọi client, kể cả màn hình trình chiếu) và admin.html để lấy danh sách
-// playerId đang thực sự online. onChange(Set<number>) được gọi mỗi khi có người vào/rời kết nối.
+// playerId đang thực sự online. onChange(Set<number>) được gọi mỗi khi có người vào/rời kết nối,
+// và được gọi ngay lập tức 1 lần với dữ liệu hiện có nếu channel đã join sẵn từ trước.
 // Luôn nuốt lỗi tại chỗ — không bao giờ throw ra ngoài, để không ảnh hưởng phần code gọi nó.
 function subscribeOnlinePlayers(onChange){
   try{
+    presenceListeners.push(onChange);
     ensurePresenceSubscribed();
-    if(!presenceChannel) return;
-    const compute = ()=>{
-      try{
-        const raw = presenceChannel.presenceState(); // { channelKey: [{playerId, at}, ...] }
-        const ids = new Set();
-        Object.values(raw).forEach(entries=>{
-          entries.forEach(e=>{ if(e && e.playerId !== undefined && e.playerId !== null) ids.add(e.playerId); });
-        });
-        onChange(ids);
-      }catch(e){ console.error("[presence] Lỗi tính danh sách online (bỏ qua):", e); }
-    };
-    presenceChannel.on("presence", {event:"sync"}, compute);
+    if(presenceChannel && presenceChannel.state === "joined"){
+      onChange(computeOnlineIds());
+    }
   }catch(e){ console.error("[presence] Lỗi subscribeOnlinePlayers (bỏ qua, không ảnh hưởng game):", e); }
 }
