@@ -1664,10 +1664,12 @@ const AFK_TIMEOUT = 45000;
 const DISCONNECT_SKIP_TIMEOUT = 8000;   // mất kết nối thật → chỉ chờ 8s là bỏ lượt/next turn luôn
 let onlinePlayerIds = new Set();
 let presenceReady = false; // true sau khi nhận được lần "sync" đầu tiên — trước đó chưa đủ dữ liệu để kết luận ai offline
-subscribeOnlinePlayers(ids=>{
-  onlinePlayerIds = ids;
-  presenceReady = true;
-});
+try{
+  subscribeOnlinePlayers(ids=>{
+    onlinePlayerIds = ids;
+    presenceReady = true;
+  });
+}catch(e){ console.error("[presence] Không khởi tạo được (bỏ qua, không ảnh hưởng game):", e); }
 
 let afkNudgeInFlight = false;
 async function afkWatchdog(){

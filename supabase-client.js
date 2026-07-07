@@ -76,44 +76,69 @@ async function rollDice(roomId, playerId) {
    chút nào nên tránh hẳn được rủi ro trên, và phát hiện mất kết nối chính
    xác hơn (dựa vào việc socket có đang mở hay không, không phải đoán qua
    timeout của heartbeat tự ghi).
+
+   AN TOÀN TUYỆT ĐỐI VỚI GAME GỐC: đây là tính năng PHỤ, chỉ để hiển thị
+   online/offline. TOÀN BỘ code dưới đây được bọc try/catch — nếu Realtime
+   Presence API lỗi/ném exception vì bất kỳ lý do gì (mạng, phiên bản thư
+   viện, channel chưa join kịp...), lỗi đó CHỈ bị log ra console và bị nuốt
+   tại chỗ, KHÔNG bao giờ được phép lan ra ngoài làm gián đoạn phần script
+   gọi nó — vì loadState/saveState/mutateState/gameAction/rollDice ở trên
+   (toàn bộ luồng chơi game thật) phải luôn chạy được bất kể Presence có
+   hoạt động hay không.
    ============================================================ */
-const presenceChannel = supabaseClient.channel(`presence-${GAME_ID}`);
+let presenceChannel = null;
 let presenceSubscribed = false;
 let myTrackedPlayerId = null;
+try{
+  presenceChannel = supabaseClient.channel(`presence-${GAME_ID}`);
+}catch(e){ console.error("[presence] Không tạo được channel — tính năng online/offline sẽ không hoạt động, KHÔNG ảnh hưởng gì tới việc chơi game:", e); }
 
 function ensurePresenceSubscribed(){
-  if(presenceSubscribed) return;
-  presenceSubscribed = true;
-  presenceChannel.subscribe(async (status)=>{
-    if(status === "SUBSCRIBED" && myTrackedPlayerId !== null){
-      await presenceChannel.track({ playerId: myTrackedPlayerId, at: Date.now() });
-    }
-  });
+  try{
+    if(presenceSubscribed || !presenceChannel) return;
+    presenceSubscribed = true;
+    presenceChannel.subscribe(async (status)=>{
+      try{
+        if(status === "SUBSCRIBED" && myTrackedPlayerId !== null){
+          await presenceChannel.track({ playerId: myTrackedPlayerId, at: Date.now() });
+        }
+      }catch(e){ console.error("[presence] Lỗi khi track (bỏ qua):", e); }
+    });
+  }catch(e){ console.error("[presence] Lỗi khi subscribe (bỏ qua):", e); }
 }
 
 // Gọi từ index.html NGAY SAU KHI biết chắc mình là player nào (claim slot / tự rejoin).
 // An toàn khi gọi lại nhiều lần (ví dụ rejoin) — track() ghi đè presence cũ của chính mình.
+// Luôn nuốt lỗi tại chỗ — không bao giờ throw ra ngoài, để không ảnh hưởng luồng claim-slot/rejoin.
 async function trackMyPresence(playerId){
-  myTrackedPlayerId = playerId;
-  ensurePresenceSubscribed();
-  if(presenceChannel.state === "joined"){
-    await presenceChannel.track({ playerId, at: Date.now() });
-  }
-  // Nếu channel chưa join xong thì callback trong ensurePresenceSubscribed() ở trên sẽ tự
-  // track() ngay khi status chuyển thành "SUBSCRIBED", không cần chờ gọi lại hàm này.
+  try{
+    myTrackedPlayerId = playerId;
+    ensurePresenceSubscribed();
+    if(presenceChannel && presenceChannel.state === "joined"){
+      await presenceChannel.track({ playerId, at: Date.now() });
+    }
+    // Nếu channel chưa join xong thì callback trong ensurePresenceSubscribed() ở trên sẽ tự
+    // track() ngay khi status chuyển thành "SUBSCRIBED", không cần chờ gọi lại hàm này.
+  }catch(e){ console.error("[presence] Lỗi trackMyPresence (bỏ qua, không ảnh hưởng game):", e); }
 }
 
 // Gọi từ index.html (mọi client, kể cả màn hình trình chiếu) và admin.html để lấy danh sách
 // playerId đang thực sự online. onChange(Set<number>) được gọi mỗi khi có người vào/rời kết nối.
+// Luôn nuốt lỗi tại chỗ — không bao giờ throw ra ngoài, để không ảnh hưởng phần code gọi nó.
 function subscribeOnlinePlayers(onChange){
-  ensurePresenceSubscribed();
-  const compute = ()=>{
-    const raw = presenceChannel.presenceState(); // { channelKey: [{playerId, at}, ...] }
-    const ids = new Set();
-    Object.values(raw).forEach(entries=>{
-      entries.forEach(e=>{ if(e && e.playerId !== undefined && e.playerId !== null) ids.add(e.playerId); });
-    });
-    onChange(ids);
-  };
-  presenceChannel.on("presence", {event:"sync"}, compute);
+  try{
+    ensurePresenceSubscribed();
+    if(!presenceChannel) return;
+    const compute = ()=>{
+      try{
+        const raw = presenceChannel.presenceState(); // { channelKey: [{playerId, at}, ...] }
+        const ids = new Set();
+        Object.values(raw).forEach(entries=>{
+          entries.forEach(e=>{ if(e && e.playerId !== undefined && e.playerId !== null) ids.add(e.playerId); });
+        });
+        onChange(ids);
+      }catch(e){ console.error("[presence] Lỗi tính danh sách online (bỏ qua):", e); }
+    };
+    presenceChannel.on("presence", {event:"sync"}, compute);
+  }catch(e){ console.error("[presence] Lỗi subscribeOnlinePlayers (bỏ qua, không ảnh hưởng game):", e); }
 }

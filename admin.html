@@ -131,11 +131,13 @@ async function init(){
   }
   render();
   subscribeToChanges((newState)=>{ state = newState; render(); });
-  subscribeOnlinePlayers(ids=>{
-    onlinePlayerIds = ids;
-    presenceReady = true;
-    if(state){ renderLobbyStatus(); renderPlayerTable(); } // Presence đổi tức thì → render lại ngay, không cần chờ tick 1s
-  });
+  try{
+    subscribeOnlinePlayers(ids=>{
+      onlinePlayerIds = ids;
+      presenceReady = true;
+      if(state){ renderLobbyStatus(); renderPlayerTable(); } // Presence đổi tức thì → render lại ngay, không cần chờ tick 1s
+    });
+  }catch(e){ console.error("[presence] Không khởi tạo được (bỏ qua, không ảnh hưởng admin panel):", e); }
   document.getElementById("status").textContent = "✅ Đã kết nối — đồng bộ real-time.";
   setInterval(tick, 1000);
 }
