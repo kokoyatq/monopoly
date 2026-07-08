@@ -102,7 +102,7 @@ async function syncClockOffset(){
   try{
     const t0 = Date.now();
     const res = await fetch(`${SUPABASE_URL}/rest/v1/`, {
-      method: "HEAD",
+      method: "GET",
       headers: { apikey: SUPABASE_ANON_KEY }
     });
     const t1 = Date.now();

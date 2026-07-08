@@ -150,7 +150,7 @@ async function tick(){
   if(state.gameStartedAt){
     await mutateState(s=>{
       if(!s.gameStartedAt || !s.turnOrderLocked || s.gameEnded) return;
-      s.elapsedSec = Math.floor((Date.now() - s.gameStartedAt) / 1000);
+      s.elapsedSec = Math.floor((nowSynced() - s.gameStartedAt) / 1000);
     });
   }
 }
@@ -293,7 +293,7 @@ function localAdvanceTurn(s){
     tries++;
   } while(s.players[s.turnOrder[pos]].status !== "active" && tries <= n);
   s.currentTurnPos = pos;
-  s.turnStartedAt = Date.now();
+  s.turnStartedAt = nowSynced();
   s.pendingBuyExpireAt = null;
 }
 
@@ -405,8 +405,8 @@ document.getElementById("btnConfirmPriority").addEventListener("click", async ()
     // Bước ưu tiên đã xong → BÂY GIỜ mới thực sự khóa thứ tự đi & bắt đầu game
     s.turnOrderLocked = true;
     s.gameStarted = true;
-    s.gameStartedAt = Date.now();  // mốc thời gian để tick() tính elapsedSec chính xác
-    s.turnStartedAt = Date.now();  // mốc bắt đầu lượt đi đầu tiên
+    s.gameStartedAt = nowSynced();  // mốc thời gian để tick() tính elapsedSec chính xác
+    s.turnStartedAt = nowSynced();  // mốc bắt đầu lượt đi đầu tiên
     addLog(s, `▶️ Game chính thức bắt đầu!`);
   });
 });
