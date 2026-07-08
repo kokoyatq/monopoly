@@ -404,37 +404,13 @@
 </div>
 
 <script>
-// --- ĐỒNG BỘ GIỜ CHUẨN SERVER ĐỂ CHỐNG LỆCH GIỜ MÁY TÍNH ---
-let serverTimeOffset = 0;
-
-function getSyncedTime() {
-  return Date.now() + serverTimeOffset;
-}
-
-async function syncServerClock() {
-  try {
-    const start = Date.now();
-    // Ping nhẹ lên server để lấy giờ chuẩn từ HTTP Header
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/roll-dice`, { method: "OPTIONS" });
-    const serverDateStr = res.headers.get("Date");
-    if (serverDateStr) {
-      const serverTime = new Date(serverDateStr).getTime();
-      const latency = (Date.now() - start) / 2;
-      serverTimeOffset = (serverTime + latency) - Date.now();
-      console.log("Đã đồng bộ giờ chuẩn Server. Độ lệch máy tính:", serverTimeOffset, "ms");
-    }
-  } catch(e) {
-    console.error("Lỗi đồng bộ giờ:", e);
-  }
-}
-syncServerClock(); // Chạy ngay khi load trang
-setInterval(syncServerClock, 5 * 60 * 1000); // Cập nhật lại mỗi 5 phút đề phòng máy bị sleep
-// ----------------------------------------------------------
-
 const params = new URLSearchParams(location.search);
 const isDisplayMode = params.get("mode") === "display";
 
-/* ─── Âm thanh (SFX) ─── */
+/* ─── Âm thanh (SFX) ───
+   Toàn bộ file âm thanh đặt tại ./assets/sounds/<tên>.mp3 — xem danh sách 10 file cần có bên dưới.
+   Thiết kế để "graceful" nếu thiếu file: play() lỗi (404, bị trình duyệt chặn autoplay khi chưa
+   có tương tác...) đều được bắt và bỏ qua lặng lẽ, KHÔNG làm crash hay chặn phần logic game. */
 const SFX_ENABLED_KEY = "ctdq_sfx_enabled";
 const SFX_VOLUME_KEY = "ctdq_sfx_volume";
 let sfxEnabled = localStorage.getItem(SFX_ENABLED_KEY) !== "off"; // mặc định BẬT
@@ -471,11 +447,16 @@ function playSfx(name){
     let base = sfxCache[name];
     if(!base){ base = new Audio(src); sfxCache[name] = base; }
     base.volume = sfxVolume;
+    // Clone để có thể phát chồng (ví dụ 2 sự kiện liên tiếp trong cùng 1 lượt) mà không cắt ngang
+    // âm đang phát dở của lần trước.
     const node = base.cloneNode();
     node.volume = sfxVolume;
-    node.play().catch(()=>{}); 
-  }catch(e){ }
+    node.play().catch(()=>{}); // bị chặn autoplay hoặc thiếu file → bỏ qua lặng lẽ, không lỗi
+  }catch(e){ /* không có sound cũng không sao, game vẫn chạy bình thường */ }
 }
+// Map emoji-đầu-dòng của event → âm thanh tương ứng. Dùng chung 1 chỗ cho MỌI nguồn phát event
+// (tự roll, xem người khác roll qua Realtime, hay do afkWatchdog tự đẩy hộ) vì tất cả đều đi qua
+// queueEventBanners() — xem chỗ gọi playSfxForEvents() bên trong hàm đó.
 const EVENT_SFX_MAP = [
   { prefix: "🏠", sfx: "buy" },
   { prefix: "💀", sfx: "eliminate" },
@@ -501,7 +482,7 @@ document.getElementById("btnSfxToggle").addEventListener("click", ()=>{
   sfxEnabled = !sfxEnabled;
   localStorage.setItem(SFX_ENABLED_KEY, sfxEnabled ? "on" : "off");
   updateSfxToggleIcon();
-  if(sfxEnabled) playSfx("buy"); 
+  if(sfxEnabled) playSfx("buy"); // phát thử 1 tiếng ngắn để xác nhận + "mở khoá" audio cho tab này
 });
 updateSfxToggleIcon();
 const sfxVolumeSlider = document.getElementById("sfxVolumeSlider");
@@ -510,20 +491,25 @@ sfxVolumeSlider.addEventListener("input", ()=>{
   sfxVolume = sfxVolumeSlider.value / 100;
   localStorage.setItem(SFX_VOLUME_KEY, sfxVolumeSlider.value);
 });
-sfxVolumeSlider.addEventListener("change", ()=>{ playSfx("ui_click"); }); 
+sfxVolumeSlider.addEventListener("change", ()=>{ playSfx("ui_click"); }); // thả tay ra thì nghe thử luôn cho biết to/nhỏ
 
-/* ─── Nhạc nền ─── */
+/* ─── Nhạc nền (loop suốt ván) ───
+   File: ./assets/sounds/bg_music.mp3 — nên chọn bản nhạc không lời, vui tươi, loop mượt (không
+   có khoảng lặng đầu/cuối để không bị giật/khựng khi lặp lại). Tách riêng nút bật/tắt với SFX để
+   người chơi tự chọn: có thể tắt nhạc nền nhưng vẫn giữ tiếng hiệu ứng, hoặc ngược lại.
+   Trình duyệt CHẶN autoplay có âm thanh nếu chưa có tương tác nào của người dùng trên trang, nên
+   nhạc chỉ thực sự bắt đầu phát ngay sau cú click/gõ phím/chạm đầu tiên bất kỳ (xử lý bên dưới). */
 const MUSIC_ENABLED_KEY = "ctdq_music_enabled";
 const MUSIC_VOLUME_KEY = "ctdq_music_volume";
-let musicEnabled = localStorage.getItem(MUSIC_ENABLED_KEY) !== "off"; 
+let musicEnabled = localStorage.getItem(MUSIC_ENABLED_KEY) !== "off"; // mặc định BẬT
 let musicVolume = (()=>{ const v = parseInt(localStorage.getItem(MUSIC_VOLUME_KEY)); return Number.isFinite(v) ? v/100 : 0.35; })();
 const bgMusic = new Audio("./assets/sounds/bg_music.mp3");
 bgMusic.loop = true;
-bgMusic.volume = musicVolume; 
+bgMusic.volume = musicVolume; // nhỏ hơn SFX mặc định để không át tiếng hiệu ứng/giọng người chơi
 let musicUnlocked = false;
 function tryStartMusic(){
   if(!musicEnabled || musicUnlocked) return;
-  bgMusic.play().then(()=>{ musicUnlocked = true; }).catch(()=>{ });
+  bgMusic.play().then(()=>{ musicUnlocked = true; }).catch(()=>{ /* chưa được phép — chờ tương tác kế tiếp */ });
 }
 function updateMusicToggleIcon(){
   const btn = document.getElementById("btnMusicToggle");
@@ -544,6 +530,9 @@ musicVolumeSlider.addEventListener("input", ()=>{
   bgMusic.volume = musicVolume;
   localStorage.setItem(MUSIC_VOLUME_KEY, musicVolumeSlider.value);
 });
+// Giảm dần âm lượng nhạc nền rồi tắt hẳn (dùng khi kết thúc game, chuyển sang bảng xếp hạng).
+// Sau khi fade xong, khôi phục lại đúng mức âm lượng người dùng đã chọn (musicVolume) để nếu có
+// ván mới, nhạc nền phát lại đúng mức cũ chứ không bị kẹt ở 0.
 let musicFadeInterval = null;
 function fadeOutMusic(duration = 1500){
   if(bgMusic.paused) return;
@@ -564,10 +553,15 @@ function fadeOutMusic(duration = 1500){
     }
   }, stepTime);
 }
+// Mở khoá nhạc nền ngay lần tương tác đầu tiên bất kỳ trên trang (bắt buộc do chính sách autoplay
+// của trình duyệt) — ví dụ bấm chọn đội trong lobby, hay bấm bất cứ đâu trên màn hình trình chiếu.
 ["click","keydown","touchstart"].forEach(evt=>{
   document.addEventListener(evt, tryStartMusic, { once:true });
 });
 
+// Tiếng "click" chung cho MỌI nút bấm trong toàn bộ trang (Roll, Mua, Tù, xác nhận vào phòng...),
+// dùng 1 listener duy nhất ở document thay vì phải sửa từng nút — trừ 2 nút bật/tắt âm thanh/nhạc
+// (đã tự có phản hồi riêng của chúng).
 document.addEventListener("click", (e)=>{
   const btn = e.target.closest("button");
   if(btn && btn.id !== "btnSfxToggle" && btn.id !== "btnMusicToggle") playSfx("ui_click");
@@ -581,24 +575,27 @@ let lastSeenDiceRollId = null;
 let lastSeenEventId = null;
 let sequenceLocked = false;
 const warnedWeak = new Set();
-let lastMyTurnState = false;   
-let lastTurnOrderLocked = false; 
-let lastGameEnded = false;       
-let lastMonopolySet = new Set(); 
-let lastPhase = null;            
+let lastMyTurnState = false;   // theo dõi để chỉ phát "your_turn" đúng 1 lần khi vừa chuyển sang lượt mình
+let lastTurnOrderLocked = false; // theo dõi để phát "game_start" đúng 1 lần khi game vừa bắt đầu
+let lastGameEnded = false;       // theo dõi để phát "game_end" đúng 1 lần khi game vừa kết thúc
+let lastMonopolySet = new Set(); // theo dõi ai ĐÃ đạt độc quyền rồi, để chỉ phát "monopoly" đúng lúc vừa đạt
+let lastPhase = null;            // theo dõi giai đoạn hiện tại để phát "phase_change" khi MC chuyển giai đoạn
 let phaseInitialized = false;
-let lastBuyTickSecond = null;    
+let lastBuyTickSecond = null;    // theo dõi để "countdown_tick" chỉ tích đúng 1 lần mỗi giây, không spam
 
 let state = null;
 const canvas = document.getElementById("boardCanvas");
 const ctx = canvas.getContext("2d");
 
+/* ─── Ảnh "dấu chủ sở hữu" đóng giữa ô đất — dùng PNG nếu có, tự fallback về chấm tròn màu đội
+   nếu chưa có file. Khi có file thật, chỉ cần đặt đúng đường dẫn dưới đây, không cần sửa gì
+   thêm ở phần code vẽ marker trong drawTile(). */
 const ownerMarkImg = new Image();
 let ownerMarkImgReady = false;
 ownerMarkImg.onload  = ()=>{ ownerMarkImgReady = true; };
 ownerMarkImg.onerror = ()=>{ ownerMarkImgReady = false; };
 ownerMarkImg.src = "./assets/owner-mark.png";
-
+  /* ─── Ảnh Token quân cờ các đội ─── */
 const tokenImgs = [];
 for (let i = 0; i < 8; i++) {
   const img = new Image();
@@ -608,8 +605,9 @@ for (let i = 0; i < 8; i++) {
   img.src = `./assets/token-${i}.png`;
 }
 
-let tileFx = [];      
-let floatTexts = [];  
+/* ─── Hiệu ứng đồ họa giữa bàn (rung ô / sáng lóe Xuất phát / flash mua đất / hạt bụi vàng) ─── */
+let tileFx = [];      // {type:'shake'|'pulse'|'flash', idx, start, duration}
+let floatTexts = [];  // {x,y,text,color,start,duration}
 const AMBIENT_PARTICLES = Array.from({length: 24}, ()=>({
   x: Math.random()*886, y: Math.random()*886,
   r: 1 + Math.random()*2.2,
@@ -631,6 +629,7 @@ function spawnBuyFlash(idx){
     floatTexts.push({x:c.cx, y:pos.y+pos.h*0.22, text:"+🏠", color:"#ffd23f", start: performance.now(), duration: 1100});
   }
 }
+// Hiện hiệu ứng phù hợp dựa trên các dòng "events" server trả về (banner cũng dùng chung mảng này)
 function applyBoardFx(events, landedIdx){
   if(!events) return;
   events.forEach(e=>{
@@ -638,6 +637,7 @@ function applyBoardFx(events, landedIdx){
     else if(e.startsWith("💸")||e.startsWith("🧾")||e.startsWith("🏛️")||e.startsWith("🚔")||e.startsWith("💀")) spawnTileShake(landedIdx);
   });
 }
+// Tìm ô vừa đổi chủ (so sánh state cũ/mới) — dùng cho người XEM khi người khác mua đất
 function findNewlyBoughtTile(prevState, newState){
   if(!prevState || !prevState.tiles || !newState || !newState.tiles) return null;
   for(let i=0;i<newState.tiles.length;i++){
@@ -647,27 +647,38 @@ function findNewlyBoughtTile(prevState, newState){
   return null;
 }
 
-const CW = 92;            
-const SW = 78;            
-const SH = 92;            
-const BAND = 14;          
-const BOARD_W = 886;      
+/* ─── Board geometry — Monopoly style ─── */
+// CW = góc vuông lớn, SW = chiều ngắn ô cạnh (dọc theo viền), SH = chiều sâu ô cạnh (vào trong bàn)
+const CW = 92;            // corner tile size
+const SW = 78;            // side tile: narrow dim (along edge) — tăng từ 64 lên 78 để chữ đọc
+                           // ngang (không cần xoay dọc) mà vẫn đủ chỗ tương đương như trước
+const SH = 92;            // side tile: deep dim (into board) — same as CW
+const BAND = 14;          // color band thickness
+const BOARD_W = 886;      // must equal canvas width — 2*CW + 9*SW = 2*92 + 9*78 = 886
 
+// Trả về mảng {x,y,w,h,side} cho từng ô (side = 'top'|'right'|'bottom'|'left'|'corner-tl'|...)
 function buildTileRects(){
   const rects = [];
-  rects.push({x:0,           y:0,         w:CW, h:CW, side:'corner-tl'}); 
+  // Top row: tiles 0–10 (left→right)
+  rects.push({x:0,           y:0,         w:CW, h:CW, side:'corner-tl'}); // 0
   for(let i=1;i<=9;i++) rects.push({x:CW+(i-1)*SW, y:0, w:SW, h:SH, side:'top'});
-  rects.push({x:BOARD_W-CW,  y:0,         w:CW, h:CW, side:'corner-tr'}); 
+  rects.push({x:BOARD_W-CW,  y:0,         w:CW, h:CW, side:'corner-tr'}); // 10
+  // Right col: tiles 11–19 (top→bottom) then corner 20
   for(let i=0;i<9;i++) rects.push({x:BOARD_W-CW, y:CW+i*SW, w:CW, h:SW, side:'right'});
-  rects.push({x:BOARD_W-CW,  y:BOARD_W-CW,w:CW, h:CW, side:'corner-br'}); 
+  rects.push({x:BOARD_W-CW,  y:BOARD_W-CW,w:CW, h:CW, side:'corner-br'}); // 20
+  // Bottom row: tiles 21–29 (right→left) then corner 30
   for(let i=0;i<9;i++) rects.push({x:BOARD_W-CW-SW*(i+1), y:BOARD_W-CW, w:SW, h:SH, side:'bottom'});
-  rects.push({x:0,           y:BOARD_W-CW,w:CW, h:CW, side:'corner-bl'}); 
+  rects.push({x:0,           y:BOARD_W-CW,w:CW, h:CW, side:'corner-bl'}); // 30
+  // Left col: tiles 31–39 (bottom→top)
   for(let i=0;i<9;i++) rects.push({x:0, y:BOARD_W-CW-SW*(i+1), w:CW, h:SW, side:'left'});
-  return rects; 
+  return rects; // 40 tiles
 }
 const positions = buildTileRects();
 const displayedPos = {};
 
+// ── Setup canvas theo đúng BOARD_W + devicePixelRatio để bàn cờ luôn NÉT (retina/HiDPI)
+// và luôn CĂN GIỮA khớp 100% với nền gỗ bo tròn (không còn lệch trái/lệch trên nữa).
+// Mọi lệnh vẽ trong code vẫn dùng toạ độ logic 0..BOARD_W như cũ, ctx.setTransform lo phần scale.
 function setupCanvasHiDPI(){
   const dpr = window.devicePixelRatio || 1;
   canvas.width  = BOARD_W * dpr;
@@ -681,11 +692,14 @@ window.addEventListener("resize", ()=>{
   setupCanvasHiDPI();
   if(state) renderBoard();
 });
+// CELL kept as compat alias for places that still reference it (token radius, float text size)
 const CELL = SW;
 const LAND_COLOR_SOLID = {NN:"#4ade80", TN:"#fb923c", DV:"#c084fc"};
+// LAND_BG kept for compat; won't be used in new drawTile
 const LAND_BG = {NN:["#a4e878","#5fae3a"], TN:["#ffc463","#e08a1c"], DV:["#d6a9fb","#9255d6"]};
 const LAND_ICON = {NN:"🌾", TN:"🏬", DV:"🏥"};
 
+// Helper: center of a tile rect (for token placement)
 function tileCenter(posRect){ return {cx: posRect.x+posRect.w/2, cy: posRect.y+posRect.h/2}; }
 
 /* ─── Init ─── */
@@ -696,6 +710,8 @@ async function init(){
     state = createInitialState();
     await saveState(state);
   } else {
+    // 🛠️ TỰ ĐỘNG VÁ LỖI (Self-healing): Nếu là phòng game cũ thiếu dữ liệu 'type', 'name', 'rent'
+    // Frontend sẽ tự động ép cấu hình mới vào và lưu đè lên DB, bạn không cần đổi ID phòng nữa!
     let needFix = false;
     state.tiles = state.tiles.map((t, idx) => {
       if (!t.type) {
@@ -716,8 +732,12 @@ async function init(){
   }
   state.players.forEach(p=> displayedPos[p.id] = p.position);
   lastSeenEventId = state.lastEventId || null;
-  lastSeenDiceRollId = state.diceRollId || null; 
+  lastSeenDiceRollId = state.diceRollId || null; // đồng bộ ngay lúc load, tránh isNewRoll bị hiểu nhầm ở lần cập nhật realtime đầu tiên
   tryAutoRejoin();
+  // Seed baseline từ state đã tải, tránh phát âm thanh/hiệu ứng "vừa xảy ra" giả ngay khi mới
+  // load/reload trang giữa ván đang chơi (VD: reload đúng lúc đang là lượt mình sẽ không còn
+  // bị phát nhầm "your_turn"; reload sau khi game đã bắt đầu/kết thúc/đã có người độc quyền hay
+  // đang yếu từ trước cũng không còn bị coi là "vừa mới chuyển trạng thái" nữa).
   lastMyTurnState = myPlayerId !== null && currentPlayerId(state) === myPlayerId
                     && state.players[myPlayerId] && state.players[myPlayerId].status === "active";
   lastTurnOrderLocked = !!state.turnOrderLocked;
@@ -727,6 +747,7 @@ async function init(){
     if(p.status==="active" && isWeak(state,p)) warnedWeak.add(p.id);
   });
   renderAll();
+  // Khôi phục buy modal nếu người chơi reload trong lúc đang chờ quyết định mua đất
   checkPendingBuy();
   subscribeToChanges((newState)=>{
     const prev = state;
@@ -740,10 +761,13 @@ async function init(){
       lastSeenDiceRollId = state.diceRollId;
       const isMine = myPlayerId !== null && state.lastMovedPlayerId === myPlayerId;
       if(!isMine){
+        // Có animation xúc xắc/di chuyển token → đợi animation xong rồi mới hiện banner,
+        // tránh banner hiện đè lên lúc người chơi đang roll/di chuyển.
         runRemoteSequence(prev, pendingEvents);
         return;
       }
     }
+    // Action không có animation (mua đất / trả tiền ra tù / chờ lượt...) → hiện banner + fx ngay
     if(pendingEvents){
       queueEventBanners(pendingEvents);
       if(pendingEvents.some(e=>e.startsWith("🏠"))){
@@ -754,6 +778,7 @@ async function init(){
   });
 }
 
+/* ─── Remote sequence (display mode + người xem) ─── */
 function runRemoteSequence(prevState, pendingEvents){
   if(!state.lastDice){ renderAll(); if(pendingEvents) queueEventBanners(pendingEvents); return; }
   const [d1,d2] = state.lastDice;
@@ -765,6 +790,9 @@ function runRemoteSequence(prevState, pendingEvents){
   const to = state.players[movedId].position;
   sequenceLocked = true;
   updateRollButton();
+  // An toàn: nếu vì lý do bất kỳ (lỗi JS, tab bị treo throttling...) mà callback bên trong
+  // không bao giờ chạy tới, watchdog này sẽ tự mở khoá lại sau tối đa 8s để bàn cờ + 2 đồng hồ
+  // đếm ngược không bao giờ bị "treo" vĩnh viễn.
   const watchdog = setTimeout(()=>{
     if(sequenceLocked){ sequenceLocked = false; renderAll(); }
   }, 8000);
@@ -775,10 +803,14 @@ function runRemoteSequence(prevState, pendingEvents){
           clearTimeout(watchdog);
           sequenceLocked = false;
           renderAll();
+          // Roll/di chuyển xong xuôi rồi mới hiện banner + hiệu ứng (mua đất, trả thuê, vào tù...)
           if(pendingEvents){
             queueEventBanners(pendingEvents);
             applyBoardFx(pendingEvents, to);
           }
+          // Dự phòng: nếu người đang đi bị lag/crash giữa chừng nên chưa kịp tự khởi động đồng hồ
+          // 15s, thì màn hình xem chung / các người chơi khác cũng đã animate xong nên có thể tự
+          // khởi động thay (idempotent — có guard !pendingBuyExpireAt nên không set trùng).
           if(state.pendingBuyTile !== null && state.pendingBuyTile !== undefined){
             startBuyTimerIfNeeded(state.pendingBuyTile);
           }
@@ -799,7 +831,7 @@ function runRemoteSequence(prevState, pendingEvents){
 }
 
 function tryAutoRejoin(){
-  if (isDisplayMode) return; 
+  if (isDisplayMode) return; // Màn hình trình chiếu KHÔNG được tự nhận lại làm 1 đội chơi nào
   const saved = localStorage.getItem(LOBBY_KEY);
   if(!saved) return;
   try{
@@ -843,7 +875,7 @@ function showDiceOnBoard(d1, d2, cb){
   }, 4000);
 }
 
-/* ─── Token animation ─── */
+/* ─── Token animation (smooth ease-out) ─── */
 function animateTokenMove(playerId, from, to, onDone){
   if(from === to){ onDone && onDone(); return; }
   const steps = [];
@@ -897,7 +929,7 @@ if (tImg && tImg.ready) {
   requestAnimationFrame(step);
 }
 
-/* ─── Thông báo sự kiện ─── */
+/* ─── Thông báo sự kiện giữa bàn (mua đất / trả thuê / vào tù...) ─── */
 let eventBannerQueue = [];
 let eventBannerBusy = false;
 function queueEventBanners(events){
@@ -920,12 +952,13 @@ function playNextEventBanner(){
   }, showMs);
 }
 
-/* ─── Cảnh báo yếu ─── */
+/* ─── Cảnh báo doanh nghiệp yếu ─── */
 function checkWeakWarnings(){
   if(!state) return;
   const banner = document.getElementById("weakBanner");
   const weakNow = state.players.filter(p=> p.status==="active" && isWeak(state,p));
   const weakIds = new Set(weakNow.map(p=>p.id));
+  // Xóa khỏi warnedWeak những đội đã hồi phục → lần sau yếu lại vẫn bật cảnh báo
   [...warnedWeak].forEach(id=>{ if(!weakIds.has(id)) warnedWeak.delete(id); });
   weakNow.forEach(p=>{
     if(!warnedWeak.has(p.id)){ warnedWeak.add(p.id); playSfx("weak_alert"); flashWeakAlert(p); }
@@ -1027,10 +1060,12 @@ document.getElementById("btnClaimCancel").addEventListener("click", ()=>{
 function fmtTime(s){
   return Math.floor(s/60).toString().padStart(2,"0")+":"+((s%60).toString().padStart(2,"0"));
 }
+// Đồng hồ chạy THẬT theo thời gian, không phụ thuộc việc có state mới đồng bộ về hay không.
+// gameStartedAt là mốc epoch-ms cố định set 1 lần khi bắt đầu game (xem game-data.js).
 function getLiveElapsedSec(){
   if(!state) return 0;
   if(state.gameStarted && state.gameStartedAt){
-    return Math.max(0, Math.floor((getSyncedTime() - state.gameStartedAt)/1000));
+    return Math.max(0, Math.floor((nowSynced() - state.gameStartedAt)/1000));
   }
   return state.elapsedSec || 0;
 }
@@ -1038,6 +1073,8 @@ function getLiveElapsedSec(){
 /* ─── Render all ─── */
 function renderAll(){
   if(!state) return;
+  // Banner "Tạm dừng" cho MỌI người chơi biết vì sao không thấy gì xảy ra (roll/mua đất/tù đều
+  // bị chặn ở server lúc pause) — tạo 1 lần duy nhất, chỉ toggle hiện/ẩn theo state.paused.
   let pauseBanner = document.getElementById("pauseBanner");
   if(!pauseBanner){
     pauseBanner = document.createElement("div");
@@ -1047,6 +1084,8 @@ function renderAll(){
     document.body.prepend(pauseBanner);
   }
   pauseBanner.style.display = state.paused ? "block" : "none";
+  // Nếu modal mua đất đang mở nhưng state không còn pendingBuyTile nữa (đã tự thuê/bỏ qua khi hết 15s,
+  // hoặc client khác đã xử lý xong) thì đóng modal lại NGAY, không chờ người chơi tự bấm nút.
   if(buyModal.classList.contains("show") && (state.pendingBuyTile===null || state.pendingBuyTile===undefined)){
     window.__pendingBuy=null; buyModal.classList.remove("show");
   }
@@ -1056,6 +1095,7 @@ function renderAll(){
   const suggested = state.phase < PHASE_SUGGEST_SECONDS.length && getLiveElapsedSec() >= PHASE_SUGGEST_SECONDS[state.phase];
   document.getElementById("phaseBar").classList.toggle("suggest", !!suggested);
   document.getElementById("suggestText").style.display = suggested ? "inline" : "none";
+  // Cập nhật lượt hiện tại ở panel phải
   const curId = currentPlayerId(state);
   const curPlayer = curId !== null ? state.players[curId] : null;
   document.getElementById("currentTurnName").textContent = curPlayer ? curPlayer.name : "—";
@@ -1063,6 +1103,7 @@ function renderAll(){
   dot.style.background = curPlayer ? curPlayer.color : "transparent";
   dot.style.display = curPlayer ? "inline-block" : "none";
 
+  // ── Âm thanh theo thay đổi trạng thái (chỉ phát đúng 1 lần tại thời điểm chuyển trạng thái) ──
   const isNowMyTurn = myPlayerId !== null && curId === myPlayerId && curPlayer && curPlayer.status === "active";
   if(isNowMyTurn && !lastMyTurnState) playSfx("your_turn");
   lastMyTurnState = isNowMyTurn;
@@ -1088,6 +1129,7 @@ function renderAll(){
 }
 
 /* ─── Board drawing ─── */
+// Fallback nếu browser chưa hỗ trợ ctx.roundRect native
 if(!CanvasRenderingContext2D.prototype.roundRect){
   CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r){
     this.beginPath(); this.moveTo(x+r,y);
@@ -1106,19 +1148,23 @@ function grd(x,y,h,c1,c2){
   const g=ctx.createLinearGradient(x,y,x,y+h);
   g.addColorStop(0,c1); g.addColorStop(1,c2); return g;
 }
+// Tách tên ô thành 1 hoặc 2 dòng để tránh font quá bé — thử split ở dấu cách
 function wrapText(text, maxW, weight, size, family){
   ctx.font = `${weight} ${size}px '${family}', sans-serif`;
   if(ctx.measureText(text).width <= maxW) return [text];
   const words = text.split(' ');
   if(words.length < 2) return [text];
+  // Tìm điểm cắt tốt nhất: cả 2 dòng đều vừa maxW
   for(let i=1; i<words.length; i++){
     const l1 = words.slice(0,i).join(' ');
     const l2 = words.slice(i).join(' ');
     if(ctx.measureText(l1).width<=maxW && ctx.measureText(l2).width<=maxW) return [l1,l2];
   }
+  // Không tìm được điểm cắt hoàn hảo → cắt đôi gần giữa
   const mid = Math.ceil(words.length/2);
   return [words.slice(0,mid).join(' '), words.slice(mid).join(' ')];
 }
+// Tự co cỡ chữ nếu cần (fallback khi wrap vẫn không đủ)
 function fitFont(text, maxWidth, weight, baseSize, family){
   let size = baseSize;
   ctx.font = `${weight} ${size}px '${family}', sans-serif`;
@@ -1130,9 +1176,11 @@ function fitFont(text, maxWidth, weight, baseSize, family){
 }
 function drawTile(tile, idx, pos, ts){
   const {x, y, w, h, side} = pos;
+  // Không padding — ô nằm sát nhau
   const tx=x, ty=y, tw=w, th=h;
   ctx.save();
 
+  // Rung nhẹ khi vừa đáp ô tốn tiền/tù
   const shakeFx = tileFx.find(f=>f.idx===idx && f.type==='shake');
   if(shakeFx){
     const prog=(ts-shakeFx.start)/shakeFx.duration;
@@ -1142,9 +1190,12 @@ function drawTile(tile, idx, pos, ts){
   const isCorner = side.startsWith('corner');
   const owner = tile.type==="property" ? state.tiles[idx].owner : null;
 
+  // ── Nền: trắng bình thường, tối hơn một chút nếu ô ĐÃ CÓ CHỦ — dễ phân biệt ô còn trống
+  // với ô đã bị mua chỉ cần liếc qua, không cần nhìn kỹ viền màu đội mới nhận ra.
   ctx.fillStyle = owner!==null ? "#e4ded0" : "#ffffff"; ctx.fillRect(tx,ty,tw,th);
   ctx.strokeStyle="#000"; ctx.lineWidth=0.8; ctx.strokeRect(tx,ty,tw,th);
 
+  // ── Thanh màu loại đất (property, không phải góc) ──
   if(tile.type==="property" && !isCorner){
     const bc = LAND_COLOR_SOLID[tile.landType]||"#ccc";
     ctx.fillStyle=bc;
@@ -1152,6 +1203,7 @@ function drawTile(tile, idx, pos, ts){
     if(side==='bottom') ctx.fillRect(tx,ty+th-BAND,tw,BAND);
     if(side==='right')  ctx.fillRect(tx+tw-BAND,ty,BAND,th);
     if(side==='left')   ctx.fillRect(tx,ty,BAND,th);
+    // Đường kẻ phân cách thanh màu với vùng trắng
     ctx.strokeStyle="rgba(0,0,0,0.2)"; ctx.lineWidth=0.6;
     ctx.beginPath();
     if(side==='top')    { ctx.moveTo(tx,ty+BAND);    ctx.lineTo(tx+tw,ty+BAND); }
@@ -1161,27 +1213,51 @@ function drawTile(tile, idx, pos, ts){
     ctx.stroke();
   }
 
+  // ── Viền chủ sở hữu: đường viền màu đội 2.5px bên trong ──
   if(owner!==null){
     ctx.strokeStyle=state.players[owner].color;
     ctx.lineWidth=2.5;
     ctx.strokeRect(tx+1.5,ty+1.5,tw-3,th-3);
   }
 
+// ── Marker chủ sở hữu: Đưa ảnh Token nhỏ gọn lên THANH MÀU của ô đất ──
   if(owner!==null){
     ctx.save();
+    
+  // ĐỔI CHỖ NÀY: Ép cứng kích thước icon to hẳn lên (ví dụ: 24px hoặc 28px)
+    // Bạn có thể tăng giảm số 26 này tùy ý để vừa mắt nhé!
     const tSize = 26; 
+    
     let iconX = tx + tw/2;
     let iconY = ty + th/2;
-    if(side==='top') { iconX = tx + tw/2; iconY = ty + BAND/2; }
-    if(side==='bottom') { iconX = tx + tw/2; iconY = ty + th - BAND/2; }
-    if(side==='right') { iconX = tx + tw - BAND/2; iconY = ty + th/2; }
-    if(side==='left') { iconX = tx + BAND/2; iconY = ty + th/2; }
 
-    ctx.globalAlpha = 0.95; 
+    // 2. Tính tọa độ tâm chính xác dựa vào hướng 'side' giống hệt logic vẽ thanh màu của bạn
+    if(side==='top') {
+      iconX = tx + tw/2;
+      iconY = ty + BAND/2;
+    }
+    if(side==='bottom') {
+      iconX = tx + tw/2;
+      iconY = ty + th - BAND/2;
+    }
+    if(side==='right') {
+      iconX = tx + tw - BAND/2;
+      iconY = ty + th/2;
+    }
+    if(side==='left') {
+      iconX = tx + BAND/2;
+      iconY = ty + th/2;
+    }
+
+    // 3. Tiến hành vẽ (Giữ ảnh nét căng, rõ chi tiết)
+    ctx.globalAlpha = 0.95; // Độ rõ 95% để nhìn cực rõ logo trên nền thanh màu
+    
     const tImg = tokenImgs[owner];
     if(tImg && tImg.ready){
+      // Vẽ ảnh Token thu nhỏ nằm căn giữa ngay trong thanh màu
       ctx.drawImage(tImg.img, iconX - tSize/2, iconY - tSize/2, tSize, tSize);
     } else {
+      // Fallback nếu chưa có ảnh: Vẽ chấm tròn nhỏ có viền trắng cho nổi bật
       ctx.beginPath(); 
       ctx.arc(iconX, iconY, tSize/2.2, 0, Math.PI*2);
       ctx.fillStyle = state.players[owner].color;
@@ -1193,11 +1269,13 @@ function drawTile(tile, idx, pos, ts){
     ctx.restore();
   }
 
+  // ── Nội dung ──
   ctx.textAlign="center"; ctx.textBaseline="middle";
 
   if(isCorner){
     const cxc=tx+tw/2, cyc=ty+th/2;
     if(tile.type==="property"){
+      // Ô góc property (vd: Chăn nuôi gà): thanh màu + tên + giá — KHÔNG icon
       ctx.fillStyle=LAND_COLOR_SOLID[tile.landType]||"#ccc";
       ctx.fillRect(tx,ty,tw,BAND);
       const displayRent=tile.rent*(state.tiles[idx].rentMultiplier||1);
@@ -1217,6 +1295,7 @@ function drawTile(tile, idx, pos, ts){
       const rSz = fitFont(`Phí thuê:${displayRent}$`, tw*0.85, 700, pSz, "Nunito");
       ctx.fillText(`Phí thuê:${displayRent}$`, cxc, cyc+nSz*0.85+rSz*1.15);
     } else {
+      // Ô góc đặc biệt: Tù / Xuất phát
       const iconMap={jail:"🚔",tax:"💸",start:"🚩",state:"⚡"};
       const icon=iconMap[tile.type]||"•";
       ctx.font=`${Math.max(22,th*0.35)}px serif`;
@@ -1226,6 +1305,8 @@ function drawTile(tile, idx, pos, ts){
       ctx.fillText(tile.name, cxc, cyc+th*0.3);
     }
   } else {
+    // ── Ô cạnh ──
+    // Vùng nội dung (loại trừ thanh màu)
     let cX=tx, cY=ty, cW=tw, cH=th;
     if(side==='top')    { cY=ty+BAND; cH=th-BAND; }
     if(side==='bottom') { cH=th-BAND; }
@@ -1233,6 +1314,8 @@ function drawTile(tile, idx, pos, ts){
     if(side==='left')   { cX=tx+BAND; cW=tw-BAND; }
     const cxc=cX+cW/2, cyc=cY+cH/2;
 
+    // Không xoay chữ nữa — SW đã tăng lên 78px nên chiều ngang (cW) đủ rộng để đọc chữ nằm
+    // ngang bình thường ở cả 4 cạnh, không cần "nằm dọc" như trước nữa.
     const maxW = cW*0.9;
     const BASE  = Math.max(11, Math.min(cW,cH)*0.19);
 
@@ -1284,6 +1367,7 @@ function drawTile(tile, idx, pos, ts){
     }
   }
 
+  // ── Sáng lóe ô Xuất phát ──
   if(tile.type==='start'){
     const pulseFx=tileFx.find(f=>f.idx===idx&&f.type==='pulse');
     if(pulseFx){
@@ -1297,6 +1381,7 @@ function drawTile(tile, idx, pos, ts){
     }
   }
 
+  // ── Flash mua đất ──
   const flashFx=tileFx.find(f=>f.idx===idx&&f.type==='flash');
   if(flashFx){
     const pp=(ts-flashFx.start)/flashFx.duration;
@@ -1313,13 +1398,13 @@ function drawTokens(ts){
   const curId = currentPlayerId(state);
   const byTile={};
   state.players.forEach(p=>{
-    if(!p.joined) return; 
+    if(!p.joined) return; // chưa có ai vào ô này thì không vẽ token (tránh 8 icon dồn hết ở xuất phát)
     if(p.status==="eliminated"||p.status==="shareholder") return;
     if(p.isAnimating) return;
     const pos=displayedPos[p.id]!==undefined?displayedPos[p.id]:p.position;
     byTile[pos]=byTile[pos]||[]; byTile[pos].push(p);
   });
-  const TOKEN_R = 9; 
+  const TOKEN_R = 9; // token radius cố định, không dùng CELL nữa
   Object.keys(byTile).forEach(posIdx=>{
     const pos=positions[posIdx];
     const {cx:baseCx, cy:baseCy} = tileCenter(pos);
@@ -1331,7 +1416,7 @@ function drawTokens(ts){
         const angle=(i*2*Math.PI)/total - Math.PI/2;
         cx+=Math.cos(angle)*TOKEN_R*1.4; cy+=Math.sin(angle)*TOKEN_R*1.4;
       }
-      cy += Math.sin((ts||0)/450 + p.id*1.7) * 2.2; 
+      cy += Math.sin((ts||0)/450 + p.id*1.7) * 2.2; // bounce nhẹ
 
       ctx.save();
       if(p.id===curId && p.status==="active"){
@@ -1393,9 +1478,10 @@ function drawCenterLogo(){
   const cx = BOARD_W/2, cy = BOARD_W/2;
   const innerW = BOARD_W - 2*CW;
   const r = innerW * 0.28;
-  const now = getSyncedTime();
+  const now = nowSynced();
 
   ctx.save();
+  // Trang trí la bàn mờ nhẹ
   ctx.translate(cx, cy);
   ctx.globalAlpha = 0.08;
   ctx.strokeStyle = "#5c4324"; ctx.lineWidth = 2;
@@ -1410,6 +1496,7 @@ function drawCenterLogo(){
   ctx.save();
   ctx.textAlign="center"; ctx.textBaseline="middle";
 
+  // Tên game nhỏ phía trên (đẩy lên cao hơn) + dòng tên nhóm bên dưới
   ctx.globalAlpha = 0.45;
   ctx.fillStyle = "#5c4324";
   ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
@@ -1418,6 +1505,7 @@ function drawCenterLogo(){
   ctx.fillText("NHÓM: MNL122", cx, cy - r*0.70);
 
   if(!state || !state.turnOrderLocked || state.gameEnded){
+    // Chưa bắt đầu — chỉ hiện logo
     ctx.globalAlpha = 0.45;
     ctx.font = `${r*0.38}px serif`;
     ctx.fillText("🏛️", cx, cy);
@@ -1428,6 +1516,7 @@ function drawCenterLogo(){
   const curId = currentPlayerId(state);
   const curPlayer = curId !== null ? state.players[curId] : null;
 
+  // ── Lượt của ai ──
   if(curPlayer){
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#2d2150";
@@ -1438,13 +1527,14 @@ function drawCenterLogo(){
     ctx.fillText(curPlayer.name, cx, cy - r*0.28);
   }
 
+  // ── Countdown ── (đã bỏ đếm ngược roll 10s — chỉ còn đếm ngược mua đất 15s)
   const hasBuy  = state.pendingBuyTile !== null && state.pendingBuyExpireAt;
 
   if(hasBuy){
     const total  = BUY_TIMEOUT;
     const expire = state.pendingBuyExpireAt;
     const remain = Math.max(0, expire - now);
-    const pct    = remain / total; 
+    const pct    = remain / total; // 1.0 → 0.0
     const secs   = Math.ceil(remain / 1000);
     const label  = "⏱ Mua đất";
     const color  = "#7b3ff2";
@@ -1452,23 +1542,27 @@ function drawCenterLogo(){
     const barY   = cy + r * 0.10;
     const barH   = r * 0.10;
 
+    // Label
     ctx.globalAlpha = 0.9;
     ctx.fillStyle = color;
     ctx.font = `700 ${Math.max(11, r*0.115)}px 'Nunito', sans-serif`;
     ctx.fillText(label, cx, barY - barH - r*0.10);
 
+    // Thanh nền
     ctx.globalAlpha = 0.18;
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.roundRect(cx - barR, barY, barR*2, barH, barH/2);
     ctx.fill();
 
+    // Thanh tiến trình
     ctx.globalAlpha = 0.88;
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.roundRect(cx - barR, barY, barR*2*pct, barH, barH/2);
     ctx.fill();
 
+    // Số giây
     ctx.globalAlpha = 1;
     ctx.fillStyle = color;
     ctx.font = `800 ${Math.max(20, r*0.28)}px 'Baloo 2', sans-serif`;
@@ -1479,6 +1573,7 @@ function drawCenterLogo(){
 }
 function renderBoard(ts){
   if(ts===undefined) ts = performance.now();
+  // Dọn các hiệu ứng đã hết hạn
   if(tileFx.length) tileFx = tileFx.filter(f => ts - f.start < f.duration);
   if(floatTexts.length) floatTexts = floatTexts.filter(f => ts - f.start < f.duration);
 
@@ -1490,12 +1585,16 @@ function renderBoard(ts){
   drawFloatTexts(ts);
 }
 
+// Vòng lặp ambient: chỉ vẽ liên tục khi bàn cờ đang RẢNH (không có animation roll/di chuyển nào
+// đang chạy riêng — animateTokenMove tự lo vẽ trong lúc nó hoạt động). Nhờ vậy không bao giờ có
+// 2 vòng lặp cùng vẽ chồng lên nhau.
 function ambientLoop(ts){
   if(state && !sequenceLocked){ renderBoard(ts); }
   requestAnimationFrame(ambientLoop);
 }
 requestAnimationFrame(ambientLoop);
 
+/* ─── Đồng hồ tổng — chạy thật mỗi giây, không chờ state mới từ server ─── */
 setInterval(()=>{
   if(!state) return;
   document.getElementById("timer").textContent = fmtTime(getLiveElapsedSec());
@@ -1504,28 +1603,41 @@ setInterval(()=>{
   document.getElementById("suggestText").style.display = suggested ? "inline" : "none";
 }, 1000);
 
+/* ─── Đếm ngược mua đất (15s) ─── */
 const BUY_TIMEOUT  = 15000;
+// ROLL_TIMEOUT giữ lại để tương thích với các đoạn code cũ tham chiếu tới (drawCenterLogo...),
+// nhưng KHÔNG còn dùng để tự động mất lượt nữa — xem khối setInterval bên dưới.
 const ROLL_TIMEOUT = 10000;
 
+// Server CỐ TÌNH không set pendingBuyExpireAt khi mở màn mua đất — đồng hồ 15s chỉ được phép
+// bắt đầu chạy SAU KHI animation xúc xắc + di chuyển quân cờ tới ô đích đã chạy xong trên màn
+// hình (gọi ngay trước khi mở buyModal, ở 2 chỗ: roll bình thường và jail-roll đổ đôi).
+// Guard bằng cờ + so sánh idx để không set trùng/set lại cho ô mua đất cũ.
+// ĐÃ SỬA: trước đây hàm này tự ghi pendingBuyExpireAt = (giờ máy mình) + BUY_TIMEOUT thẳng vào DB
+// qua mutateState() — nghĩa là máy nào gọi hàm này trước sẽ "áp" giờ máy NÓ cho cả bàn, và nếu
+// đồng hồ máy đó lệch thì mọi người cùng bị lệch theo. Giờ gọi qua gameAction("start-buy-timer")
+// để CHÍNH SERVER tự tính mốc hết hạn bằng đồng hồ của nó — không còn phụ thuộc máy client nào.
 let buyTimerStarting = false;
 async function startBuyTimerIfNeeded(expectedIdx){
   if(!state) return;
   if(state.pendingBuyTile === null || state.pendingBuyTile === undefined) return;
-  if(state.pendingBuyTile !== expectedIdx) return; 
-  if(state.pendingBuyExpireAt) return; 
+  if(state.pendingBuyTile !== expectedIdx) return; // state đã đổi (ví dụ do action khác chen ngang)
+  if(state.pendingBuyExpireAt) return; // đã có người set rồi (chính mình hoặc client khác)
   if(buyTimerStarting) return;
   buyTimerStarting = true;
   try{
-    const fixed = await mutateState(s=>{
-      if(s.pendingBuyTile === expectedIdx && !s.pendingBuyExpireAt){
-        s.pendingBuyExpireAt = getSyncedTime() + BUY_TIMEOUT;
-      }
-    });
-    if(fixed){ state = fixed; renderAll(); }
+    const curId = currentPlayerId(state) ?? 0; // chỉ để điền field playerId, server không dùng để check lượt cho action này
+    const r = await gameAction(GAME_ID, curId, "start-buy-timer", { expectedIdx });
+    if(r && r.state){ state = r.state; if(state.lastEventId) lastSeenEventId = state.lastEventId; renderAll(); }
   }catch(e){ console.error("startBuyTimerIfNeeded lỗi:", e); }
   buyTimerStarting = false;
 }
 
+// Tự vá (lưới an toàn dự phòng): nếu ván đã khoá thứ tự lượt chơi (turnOrderLocked) nhưng thiếu
+// mốc pendingBuyExpireAt — ví dụ do mất kết nối, đóng tab giữa chừng khiến startBuyTimerIfNeeded()
+// phía trên không kịp chạy — thì tự bù lại. PHẢI đợi đủ lâu (hơn thời lượng animation tối đa: 4s
+// xúc xắc + tối đa ~6s di chuyển ≈ 10s) trước khi tự vá, để không "cướp" mất thời điểm mà
+// startBuyTimerIfNeeded() lẽ ra sẽ set đúng lúc.
 const BUY_FIX_GRACE_MS = 12000;
 let buyFixMissingSince = null;
 let healingTimers = false;
@@ -1535,8 +1647,8 @@ async function selfHealTimers(){
 
   let needsBuyFix = false;
   if(needsBuyFixRaw){
-    if(!buyFixMissingSince) buyFixMissingSince = getSyncedTime();
-    needsBuyFix = (getSyncedTime() - buyFixMissingSince) >= BUY_FIX_GRACE_MS;
+    if(!buyFixMissingSince) buyFixMissingSince = nowSynced();
+    needsBuyFix = (nowSynced() - buyFixMissingSince) >= BUY_FIX_GRACE_MS;
   } else {
     buyFixMissingSince = null;
   }
@@ -1544,20 +1656,35 @@ async function selfHealTimers(){
   if(!needsBuyFix) return;
   healingTimers = true;
   try{
-    const fixed = await mutateState(s=>{
-      if(needsBuyFix && s.pendingBuyTile !== null && s.pendingBuyTile !== undefined && !s.pendingBuyExpireAt){
-        s.pendingBuyExpireAt = getSyncedTime() + BUY_TIMEOUT;
-      }
-    });
-    if(fixed){ state = fixed; renderAll(); }
+    const idx = state.pendingBuyTile;
+    const curId = currentPlayerId(state) ?? 0; // chỉ để điền field playerId, server không dùng để check lượt cho action này
+    const r = await gameAction(GAME_ID, curId, "start-buy-timer", { expectedIdx: idx });
+    if(r && r.state){ state = r.state; if(state.lastEventId) lastSeenEventId = state.lastEventId; renderAll(); }
   }catch(e){ console.error("selfHealTimers lỗi:", e); }
   healingTimers = false;
 }
 
+/* ─── AFK Watchdog: đảm bảo ván KHÔNG BAO GIỜ bị treo vĩnh viễn nếu người đang tới lượt bị
+   lag / mất kết nối / đứng máy. Hàm này chạy trên MỌI trình duyệt đang mở trang (kể cả những
+   người khác đang xem, kể cả màn hình trình chiếu), KHÔNG phụ thuộc việc có phải máy của người
+   đang tới lượt hay không. Nhờ vậy chỉ cần còn 1 thiết bị bất kỳ mở trang là ván vẫn tự trôi
+   tiếp, không bị treo cứng chờ đúng cái máy đang gặp sự cố. ──
+   Cơ chế: nếu quá AFK_TIMEOUT (45s) mà "lượt hiện tại" không có động tĩnh gì (không roll /
+   không xử lý tù) thì tự động đẩy hộ bằng action an toàn nhất (skip-turn / jail-wait).
+   Riêng phần mua đất vẫn giữ nguyên 15s như cũ (BUY_TIMEOUT), chỉ khác là giờ AI CŨNG có thể
+   là người bấm hộ, không riêng gì máy của người đang tới lượt. */
 const AFK_TIMEOUT = 45000;
-const DISCONNECT_SKIP_TIMEOUT = 8000;   
+
+/* ─── Presence / phát hiện mất kết nối thật ───
+   Dùng Supabase Realtime Presence (trackMyPresence / subscribeOnlinePlayers, định nghĩa trong
+   supabase-client.js) — KHÔNG dùng mutateState() để tự ghi "còn sống" vào state, vì mutateState()
+   không có optimistic-lock (không check version) nên ghi lặp lại liên tục có rủi ro thật: đọc
+   phải state cũ rồi ghi đè mất 1 hành động roll/mua đất vừa xảy ra qua Edge Function. Presence
+   không đụng vào bảng games nên tránh hẳn rủi ro đó, và phát hiện mất kết nối chính xác hơn vì
+   dựa trên socket thật, không phải đoán qua timeout tự ghi. */
+const DISCONNECT_SKIP_TIMEOUT = 8000;   // mất kết nối thật → chỉ chờ 8s là bỏ lượt/next turn luôn
 let onlinePlayerIds = new Set();
-let presenceReady = false; 
+let presenceReady = false; // true sau khi nhận được lần "sync" đầu tiên — trước đó chưa đủ dữ liệu để kết luận ai offline
 try{
   subscribeOnlinePlayers(ids=>{
     onlinePlayerIds = ids;
@@ -1568,41 +1695,48 @@ try{
 let afkNudgeInFlight = false;
 async function afkWatchdog(){
   if(!state || !state.turnOrderLocked || state.gameEnded) return;
-  if(state.paused) return; 
+  if(state.paused) return; // MC đang tạm dừng — không auto-skip/auto-mua/auto-jail-wait lúc này
   if(afkNudgeInFlight) return;
   const curId = currentPlayerId(state);
   if(curId === null) return;
   const curPlayer = state.players[curId];
   if(!curPlayer || curPlayer.status !== "active") return;
-  const now = getSyncedTime();
+  const now = nowSynced();
 
-  // 1) Đang chờ quyết định mua đất
-  if(state.pendingBuyTile !== null && state.pendingBuyTile !== undefined){
-    // NẾU HẾT GIỜ THÌ GỌI LỆNH TỰ ĐỘNG THUÊ
-    if (state.pendingBuyExpireAt && now >= state.pendingBuyExpireAt) {
-      afkNudgeInFlight = true;
-      try{
-        const r = await gameAction(GAME_ID, curId, "buy-no");
-        state = r.state; if(state.lastEventId) lastSeenEventId = state.lastEventId;
-        queueEventBanners(r.events);
-        if(!sequenceLocked) renderAll();
-      }catch(e){ /* client khác đã xử lý trước hoặc hết hạn — bỏ qua, không phải lỗi thật */ }
-      afkNudgeInFlight = false;
-    }
-    // LUÔN BẮT BUỘC RETURN TẠI ĐÂY NẾU ĐANG CHỜ MUA ĐẤT - Tuyệt đối không cho chạy lệnh skip-turn bên dưới!
-    return; 
+  // 1) Đang chờ quyết định mua đất mà quá hạn 15s → tự động THUÊ giúp (KHÔNG mua, chỉ trả phí
+  //    mặt bằng = tiền thuê, giống hệt hành vi bấm "Bỏ qua") — chạy được từ BẤT KỲ client nào,
+  //    không riêng máy người đang tới lượt.
+  if(state.pendingBuyTile !== null && state.pendingBuyTile !== undefined && state.pendingBuyExpireAt && now >= state.pendingBuyExpireAt){
+    afkNudgeInFlight = true;
+    try{
+      const r = await gameAction(GAME_ID, curId, "buy-no", { reason: "timeout" });
+      state = r.state; if(state.lastEventId) lastSeenEventId = state.lastEventId;
+      queueEventBanners(r.events);
+      if(!sequenceLocked) renderAll();
+    }catch(e){ /* client khác đã xử lý trước hoặc hết hạn — bỏ qua, không phải lỗi thật */ }
+    afkNudgeInFlight = false;
+    return;
   }
 
+  // Xác định người đang tới lượt có đang MẤT KẾT NỐI THẬT hay không (không có mặt trong danh
+  // sách Presence online) — nếu có thì dùng timeout ngắn DISCONNECT_SKIP_TIMEOUT (8s) thay vì
+  // đợi đủ AFK_TIMEOUT (45s) như trường hợp chỉ đang rảnh tay/lag bình thường. Trước khi nhận
+  // được lần sync Presence đầu tiên (presenceReady=false), KHÔNG kết luận offline vội — dùng
+  // timeout thường để tránh bỏ lượt oan lúc trang vừa tải xong.
   const isOffline = presenceReady && !onlinePlayerIds.has(curId);
   const turnTimeout = isOffline ? DISCONNECT_SKIP_TIMEOUT : AFK_TIMEOUT;
 
-  // 2) Đang ở tù mà im lặng quá lâu
+  // 2) Đang ở tù mà im lặng quá lâu (máy họ treo, không mở được modal Tù) → tự chọn "chờ thêm
+  //    lượt" — lựa chọn an toàn nhất, không tốn tiền của họ.
   if(curPlayer.jailTurns > 0){
     if(state.turnStartedAt && now - state.turnStartedAt >= turnTimeout){
       afkNudgeInFlight = true;
       try{
         const r = await gameAction(GAME_ID, curId, "jail-wait", { reason: isOffline ? "disconnect" : "afk" });
         state = r.state; if(state.lastEventId) lastSeenEventId = state.lastEventId;
+        // Banner lấy từ server (r.events) — server tự soạn nội dung khác nhau tuỳ `reason`, đảm
+        // bảo MỌI người xem (kể cả màn hình trình chiếu) thấy ĐÚNG cùng 1 nội dung nhất quán,
+        // không phụ thuộc việc máy nào tình cờ là máy kích hoạt watchdog trước.
         queueEventBanners(r.events);
         if(!sequenceLocked) renderAll();
       }catch(e){}
@@ -1611,12 +1745,16 @@ async function afkWatchdog(){
     return;
   }
 
-  // 3) Tới lượt roll mà im lặng quá lâu
+  // 3) Tới lượt roll mà im lặng quá lâu (lag / mất kết nối / đứng máy) → tự động bỏ lượt.
+  //    Nếu là mất kết nối thật thì chỉ chờ 8s, còn AFK thường (vẫn online) thì vẫn chờ đủ 45s.
   if(state.turnStartedAt && now - state.turnStartedAt >= turnTimeout){
     afkNudgeInFlight = true;
     try{
       const r = await gameAction(GAME_ID, curId, "skip-turn", { reason: isOffline ? "disconnect" : "afk" });
       state = r.state; if(state.lastEventId) lastSeenEventId = state.lastEventId;
+      // Banner lấy từ server (r.events) — server tự soạn nội dung khác nhau tuỳ `reason`, đảm bảo
+      // MỌI người xem (kể cả màn hình trình chiếu) thấy ĐÚNG cùng 1 nội dung nhất quán, không phụ
+      // thuộc việc máy nào tình cờ là máy kích hoạt watchdog trước.
       queueEventBanners(r.events);
       if(!sequenceLocked) renderAll();
     }catch(e){}
@@ -1628,8 +1766,11 @@ setInterval(()=>{
   if(!state || !state.turnOrderLocked || state.gameEnded) return;
   selfHealTimers();
   afkWatchdog();
-  const now = getSyncedTime();
+  const now = nowSynced();
 
+  // ── Thanh đếm ngược mua đất (15s) — chỉ để HIỂN THỊ. Việc tự thuê (bỏ qua mua) khi hết giờ giờ do
+  //    afkWatchdog() ở trên đảm nhiệm (chạy trên mọi client), không còn phụ thuộc riêng máy
+  //    của người đang tới lượt nữa. ──
   const buyEl    = document.getElementById("buyCountdownBar");
   const buyNumEl = document.getElementById("buyCountdownNum");
   if(state.pendingBuyTile !== null && state.pendingBuyExpireAt){
@@ -1638,6 +1779,9 @@ setInterval(()=>{
     if(buyEl)    buyEl.style.width = pct + "%";
     if(buyNumEl) buyNumEl.textContent = Math.ceil(remain/1000) + "s";
     const remainSec = Math.ceil(remain/1000);
+    // Chỉ phát CẢNH BÁO đúng 1 LẦN khi còn 5s cho mỗi lượt mua đất (không lặp mỗi giây nữa vì
+    // đã có tiếng tictac đồng hồ chạy liên tục riêng rồi). Dùng chính mốc pendingBuyExpireAt làm
+    // "khóa" — mỗi lượt mua đất có 1 mốc expire khác nhau nên không bị phát trùng/phát lại.
     if(remainSec <= 5 && remainSec >= 1 && lastBuyTickSecond !== state.pendingBuyExpireAt){
       playSfx("countdown_tick");
       lastBuyTickSecond = state.pendingBuyExpireAt;
@@ -1648,10 +1792,15 @@ setInterval(()=>{
     lastBuyTickSecond = null;
   }
 
+  // ── Timer roll: không hiện đếm ngược cho người chơi (theo yêu cầu trước đó) — nhưng
+  //    afkWatchdog() ở trên vẫn âm thầm đảm bảo ván không bị treo vĩnh viễn nếu có người
+  //    mất kết nối/lag ngay đúng lúc tới lượt họ. ──
   const rollWrap = document.getElementById("rollCountdownWrap");
   if(rollWrap) rollWrap.style.display = "none";
 }, 400);
 
+/* ─── Particle nền phía sau bàn cờ — canvas RIÊNG BIỆT hoàn toàn, không đụng tới
+   canvas bàn cờ chính (boardCanvas) nên không thể ảnh hưởng tới vẽ ô/token/logic game. ─── */
 (function initBgParticles(){
   const bgCanvas = document.getElementById("bgParticles");
   if(!bgCanvas) return;
@@ -1688,7 +1837,7 @@ setInterval(()=>{
       bgCtx.beginPath(); bgCtx.arc(0,0,s/2,0,Math.PI*2); bgCtx.fill();
     } else if(p.shape === "square"){
       bgCtx.fillRect(-s/2, -s/2, s, s);
-    } else { 
+    } else { // triangle
       bgCtx.beginPath();
       bgCtx.moveTo(0, -s/2);
       bgCtx.lineTo(s/2, s/2);
@@ -1704,7 +1853,7 @@ setInterval(()=>{
     particles.forEach(p=>{
       const y = ((p.y - ts*p.speed) % (H+40) + (H+40)) % (H+40) - 20;
       const x = p.x + Math.sin(ts/2200 + p.driftPhase) * p.driftAmp;
-      p.rot += p.rotSpeed * 16; 
+      p.rot += p.rotSpeed * 16; // xoay chậm rãi
       drawShape(p, x, y);
     });
     requestAnimationFrame(loop);
@@ -1712,6 +1861,7 @@ setInterval(()=>{
   requestAnimationFrame(loop);
 })();
 
+/* ─── Sidebar ─── */
 function renderPlayers(){
   const wrap=document.getElementById("players"); wrap.innerHTML="";
   const curId=currentPlayerId(state);
@@ -1759,6 +1909,8 @@ function updateRollButton(){
   } else {
     btn.textContent = isMyTurn ? "🎲🎲 Đổ xúc xắc (lượt của bạn!)" : `🎲🎲 Đang chờ ${state.players[curId]?.name||""}`;
   }
+  // Chỉ mở jailModal khi ĐÚNG lượt mình và còn đang ở tù; các trường hợp khác (đã hết lượt do
+  // afkWatchdog tự động jail-wait giúp, hoặc đã ra tù) phải TỰ ĐÓNG modal, không để treo màn hình.
   const iAmDecidingJail = isMyTurn && state.players[curId].jailTurns>0;
   if(iAmDecidingJail && !jailModal.classList.contains("show")) openJailModal();
   if(!iAmDecidingJail && jailModal.classList.contains("show")) jailModal.classList.remove("show");
@@ -1778,9 +1930,13 @@ function renderResultModal(){
   tbody.innerHTML=`<tr id="resultHeaderRow"><th>#</th><th>Đội</th><th>Tiền</th><th>Giá trị đất</th><th>Tổng TS</th><th>Trạng thái</th></tr>`;
   const headerRow = document.getElementById("resultHeaderRow");
 
+  // Reveal từ hạng thấp nhất → hạng 1, mỗi hạng cách nhau 900ms để tạo cảm giác hồi hộp.
+  // MỖI dòng mới luôn được chèn NGAY DƯỚI header (không phải nối vào cuối bảng) — nhờ vậy dù
+  // thứ tự công bố là từ dưới lên, các dòng cũ luôn bị đẩy xuống, và khi công bố xong Top 1
+  // (luôn là dòng được chèn SAU CÙNG) sẽ luôn nằm ở vị trí trên cùng, đúng thứ hạng thật.
   const total = ranked.length;
   ranked.slice().reverse().forEach((p, revIdx)=>{
-    const rank = total - 1 - revIdx; 
+    const rank = total - 1 - revIdx; // vị trí thật trong mảng đã sort (0 = nhất)
     const medal = rank===0?"🥇":rank===1?"🥈":rank===2?"🥉":`#${rank+1}`;
     const propVal=p.properties.reduce((sum,idx)=>sum+RAW_TILES[idx][3],0);
     const equityStr=p.status==="shareholder"
@@ -1799,11 +1955,13 @@ function renderResultModal(){
         <td><b>${totalAssets(state,p).toLocaleString()}$</b></td>
         <td style="font-size:11px;">${equityStr}</td>`;
       headerRow.insertAdjacentElement("afterend", tr);
+      // Force reflow để animation chạy được
       requestAnimationFrame(()=>{ tr.style.opacity="1"; });
     }, revIdx * 900);
   });
 }
 
+/* ─── Roll button ─── */
 document.getElementById("btnRoll").addEventListener("click", async ()=>{
   if(sequenceLocked) return;
   const curId=currentPlayerId(state);
@@ -1813,6 +1971,7 @@ document.getElementById("btnRoll").addEventListener("click", async ()=>{
 
   sequenceLocked=true; updateRollButton();
 
+  // Gọi Edge Function — server tính toán và trả về kết quả
   let result;
   try{
     result = await rollDice(GAME_ID, myPlayerId);
@@ -1828,9 +1987,11 @@ document.getElementById("btnRoll").addEventListener("click", async ()=>{
 
   document.getElementById("diceResult").textContent = `🎲${d1} 🎲${d2} = ${d1+d2}`;
 
+  // Cập nhật state local ngay để renderAll dùng được
   state = result.state;
   if(state.lastEventId) lastSeenEventId = state.lastEventId;
 
+  // Hiện xúc xắc 4s → animate token → mở modal phù hợp theo loại ô
   const rollWatchdog = setTimeout(()=>{
     if(sequenceLocked){ sequenceLocked=false; renderAll(); }
   }, 8000);
@@ -1872,8 +2033,9 @@ document.getElementById("btnRoll").addEventListener("click", async ()=>{
     sequenceLocked=false;
     renderAll();
   }
-});
+}); // ← đóng event listener đúng chỗ
 
+/* ─── Khôi phục buy modal nếu reload khi đang chờ mua đất ─── */
 function checkPendingBuy(){
   if(myPlayerId === null) return;
   if(isDisplayMode) return;
@@ -1886,6 +2048,7 @@ function checkPendingBuy(){
   openBuyModal(state.pendingBuyTile);
 }
 
+/* ─── Buy modal ─── */
 const buyModal=document.getElementById("buyModal");
 function openBuyModal(idx){
   const tile=tileInfo(idx);
@@ -1902,8 +2065,9 @@ function openBuyModal(idx){
   buyModal.classList.add("show");
 }
 
+/* ─── Rent modal (thông báo trả tiền thuê — chỉ dùng để thông báo, không có action server vì server đã tự trừ rồi) ─── */
 const rentModal=document.getElementById("rentModal");
-const NOTICE_MODAL_AUTO_DISMISS_MS = 8000; 
+const NOTICE_MODAL_AUTO_DISMISS_MS = 8000; // các modal chỉ-để-thông-báo (rent/state/tax) tự đóng sau 8s nếu người chơi không bấm OK, tránh treo màn hình vĩnh viễn
 let rentModalTimer=null;
 function openRentModal(tileName, ownerName, amount){
   document.getElementById("rentTitle").textContent=`💸 Trả tiền thuê — ${tileName}`;
@@ -1918,6 +2082,7 @@ document.getElementById("btnRentOk").addEventListener("click",()=>{
   rentModal.classList.remove("show");
 });
 
+/* ─── State modal (Điện Lực / Nước) ─── */
 const stateModal=document.getElementById("stateModal");
 let stateModalTimer=null;
 function openStateModal(){
@@ -1930,6 +2095,7 @@ document.getElementById("btnStateOk").addEventListener("click",()=>{
   stateModal.classList.remove("show");
 });
 
+/* ─── Tax modal (Thuế) ─── */
 const taxModal=document.getElementById("taxModal");
 let taxModalTimer=null;
 function openTaxModal(){
@@ -1974,6 +2140,7 @@ document.getElementById("btnBuyNo").addEventListener("click", async ()=>{
   renderAll();
 });
 
+/* ─── Jail modal ─── */
 const jailModal=document.getElementById("jailModal");
 function openJailModal(){
   const player=state.players[myPlayerId];
@@ -2007,6 +2174,7 @@ document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
   }, 8000);
   try{
     showDiceOnBoard(d1j,d2j, ()=>{
+      // Đổ đôi: ra tù VÀ đi tiếp theo số điểm, nên phải animate token di chuyển tới ô mới
       if(isDouble && newPos !== oldPos){
         try{
           animateTokenMove(myPlayerId, oldPos, newPos, ()=>{

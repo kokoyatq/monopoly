@@ -61,6 +61,67 @@ async function mutateState(mutatorFn, maxRetries = 8){
   return null;
 }
 
+/* ============================================================
+   ĐỒNG BỘ ĐỒNG HỒ CLIENT ↔ SERVER (clock offset)
+   ------------------------------------------------------------
+   VẤN ĐỀ ĐÃ SỬA: toàn bộ logic đếm ngược mua đất (pendingBuyExpireAt) và
+   watchdog tự động trả tiền thuê/hết giờ (afkWatchdog, turnStartedAt...)
+   trước đây dùng THẲNG Date.now() của TỪNG máy — tức là lấy giờ hệ thống
+   riêng của mỗi trình duyệt. Nếu đồng hồ máy nào đó bị lệch (nhanh/chậm dù
+   chỉ vài giây tới vài chục giây — rất hay gặp trên điện thoại/máy không
+   bật đồng bộ giờ tự động) thì xảy ra ĐÚNG các triệu chứng đã gặp:
+     - Số giây đếm ngược hiển thị nhảy loạn giữa các máy (15s/17s/45s...)
+       vì mỗi máy tự lấy "còn lại = pendingBuyExpireAt - giờ máy mình".
+     - Có máy đồng hồ CHẠY NHANH hơn → tưởng đã hết 15s dù mới qua 1-2s
+       thật, tự ý gọi action "buy-no" (trả tiền thuê) giùm SỚM.
+     - Máy đang thao tác (bấm "Mua") thì bị lỡ vì lượt đã bị máy khác (do
+       đồng hồ nhanh) tự động xử lý xong trước đó → server trả lỗi
+       "Không phải lượt của bạn".
+   CÁCH SỬA: đo độ lệch (offset) giữa giờ máy mình và giờ SERVER (lấy từ
+   header "Date" trong response HTTP của chính Supabase — không cần thêm
+   endpoint nào khác), rồi CỘNG offset đó vào Date.now() mỗi khi cần lấy
+   "giờ hiện tại" liên quan tới đếm ngược / watchdog. Nhờ vậy dù đồng hồ
+   máy có sai lệch, mọi máy đều tính toán dựa trên cùng 1 mốc giờ THỐNG
+   NHẤT (xấp xỉ giờ server), không còn bị lệch pha giữa các máy nữa.
+   Dùng chung cho cả index.html LẪN admin.html vì cả 2 đều load file này.
+   ============================================================ */
+let clockOffsetMs = 0; // serverNow ≈ Date.now() + clockOffsetMs
+
+// Lấy "giờ hiện tại" đã hiệu chỉnh theo server — dùng thay cho Date.now()
+// ở MỌI chỗ liên quan tới pendingBuyExpireAt / turnStartedAt / gameStartedAt / watchdog.
+function nowSynced(){
+  return Date.now() + clockOffsetMs;
+}
+
+// Đo lệch giờ bằng 1 request HEAD nhẹ tới chính Supabase REST endpoint, đọc
+// header "Date" server trả về (chuẩn HTTP, mọi server đều có). Trừ đi nửa
+// round-trip-time để bù độ trễ mạng cho chính xác hơn (kiểu ước lượng NTP
+// đơn giản). Luôn nuốt lỗi tại chỗ — nếu đo lỗi (mạng chập chờn...) thì giữ
+// nguyên offset cũ, KHÔNG làm gián đoạn game.
+async function syncClockOffset(){
+  try{
+    const t0 = Date.now();
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/`, {
+      method: "HEAD",
+      headers: { apikey: SUPABASE_ANON_KEY }
+    });
+    const t1 = Date.now();
+    const dateHeader = res.headers.get("date");
+    if(dateHeader){
+      const serverNowAtT1 = new Date(dateHeader).getTime();
+      const rtt = t1 - t0;
+      // Ước lượng giờ server tại thời điểm t1 (đã bù nửa round-trip)
+      const estServerNow = serverNowAtT1 + rtt/2;
+      clockOffsetMs = estServerNow - t1;
+    }
+  }catch(e){ console.error("[clock-sync] Không đo được lệch giờ server (bỏ qua, dùng offset cũ):", e); }
+}
+
+// Đo ngay khi load trang, và đo lại định kỳ để bù trôi giờ (drift) + phòng
+// trường hợp lần đo đầu tiên bị mạng chậm/lỗi.
+syncClockOffset();
+setInterval(syncClockOffset, 30000);
+
 function subscribeToChanges(onChange){
   return supabaseClient
     .channel("game-changes")
