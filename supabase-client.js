@@ -93,23 +93,35 @@ function nowSynced(){
   return Date.now() + clockOffsetMs;
 }
 
-// Đo lệch giờ bằng 1 request HEAD nhẹ tới chính Supabase REST endpoint, đọc
-// header "Date" server trả về (chuẩn HTTP, mọi server đều có). Trừ đi nửa
-// round-trip-time để bù độ trễ mạng cho chính xác hơn (kiểu ước lượng NTP
-// đơn giản). Luôn nuốt lỗi tại chỗ — nếu đo lỗi (mạng chập chờn...) thì giữ
-// nguyên offset cũ, KHÔNG làm gián đoạn game.
+// Đo lệch giờ bằng 1 request nhẹ tới chính Supabase REST endpoint, đọc header
+// "Date" server trả về (chuẩn HTTP, mọi server đều có). Trừ đi nửa round-trip-
+// time để bù độ trễ mạng cho chính xác hơn (kiểu ước lượng NTP đơn giản).
+// Luôn nuốt lỗi tại chỗ — nếu đo lỗi (mạng chập chờn...) thì giữ nguyên offset
+// cũ, KHÔNG làm gián đoạn game.
+//
+// QUAN TRỌNG — ĐÃ SỬA BUG: bản trước gọi fetch() lặp lại CÙNG 1 URL mỗi 30s mà
+// không chặn cache, nên trình duyệt/CDN (Cloudflare phía trước Supabase) có thể
+// trả về response CŨ đã cache — kéo theo header "Date" bị "đóng băng" ở thời
+// điểm cache lần đầu, càng để lâu càng lệch xa hiện tại. Hậu quả: nowSynced()
+// tưởng giờ server CHẬM hơn thực tế → đếm ngược mua đất hiện dư ra (16s, 17s...
+// thay vì tối đa 15s), lỗi càng tăng theo thời gian cache còn sống. Giờ ép
+// KHÔNG được cache bằng `cache:"no-store"` + thêm tham số ngẫu nhiên vào URL
+// mỗi lần gọi (chặn cả cache theo URL của CDN lẫn của trình duyệt).
 async function syncClockOffset(){
   try{
     const t0 = Date.now();
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/?_ts=${t0}_${Math.random()}`, {
       method: "GET",
+      cache: "no-store",
       headers: { apikey: SUPABASE_ANON_KEY }
     });
     const t1 = Date.now();
     const dateHeader = res.headers.get("date");
-    if(dateHeader){
+    const rtt = t1 - t0;
+    // Mạng quá chập chờn (RTT bất thường lớn) → phép đo không đáng tin, bỏ qua lần
+    // này, GIỮ NGUYÊN offset cũ thay vì áp 1 giá trị có thể sai lệch nhiều.
+    if(dateHeader && rtt < 5000){
       const serverNowAtT1 = new Date(dateHeader).getTime();
-      const rtt = t1 - t0;
       // Ước lượng giờ server tại thời điểm t1 (đã bù nửa round-trip)
       const estServerNow = serverNowAtT1 + rtt/2;
       clockOffsetMs = estServerNow - t1;
