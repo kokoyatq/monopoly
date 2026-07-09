@@ -1510,13 +1510,40 @@ function drawCenterLogo(){
   ctx.save();
   ctx.textAlign="center"; ctx.textBaseline="middle";
 
-  // Tên game nhỏ phía trên (đẩy lên cao hơn) + dòng tên nhóm bên dưới
+  // Tên game nhỏ phía trên (đẩy lên cao hơn nữa để nhường chỗ cho khung "Nhóm" bên dưới)
   ctx.globalAlpha = 0.45;
   ctx.fillStyle = "#5c4324";
   ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*1.00);
-  ctx.font = `700 ${Math.max(10, r*0.095)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("NHÓM: MNL122", cx, cy - r*0.86);
+  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*1.32);
+
+  // Khung viền tên nhóm — dạng viên thuốc (pill) nổi bật: nền cam san hô, viền trắng, chữ trắng
+  // viền đen, giống mẫu badge người dùng cung cấp.
+  ctx.globalAlpha = 1;
+  const groupLabel = "Nhóm 6";
+  const badgeFont  = `800 ${Math.max(13, r*0.145)}px 'Baloo 2', sans-serif`;
+  ctx.font = badgeFont;
+  const badgeTextW = ctx.measureText(groupLabel).width;
+  const badgePadX  = r*0.18;
+  const badgeH     = Math.max(24, r*0.26);
+  const badgeW     = badgeTextW + badgePadX*2;
+  const badgeCY    = cy - r*1.05;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(cx - badgeW/2, badgeCY - badgeH/2, badgeW, badgeH, badgeH/2);
+  ctx.fillStyle = "#f2764a";
+  ctx.fill();
+  ctx.lineWidth = Math.max(2.5, badgeH*0.11);
+  ctx.strokeStyle = "#ffffff";
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(2, r*0.022);
+  ctx.strokeStyle = "#3b2418";
+  ctx.strokeText(groupLabel, cx, badgeCY);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(groupLabel, cx, badgeCY);
 
   if(!state || !state.turnOrderLocked || state.gameEnded){
     // Chưa bắt đầu — chỉ hiện logo
@@ -1535,10 +1562,10 @@ function drawCenterLogo(){
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#2d2150";
     ctx.font = `700 ${Math.max(13, r*0.155)}px 'Baloo 2', sans-serif`;
-    ctx.fillText("LƯỢT CỦA", cx, cy - r*0.64);
+    ctx.fillText("LƯỢT CỦA", cx, cy - r*0.78);
     ctx.font = `800 ${Math.max(16, r*0.20)}px 'Baloo 2', sans-serif`;
     ctx.fillStyle = curPlayer.color;
-    ctx.fillText(curPlayer.name, cx, cy - r*0.40);
+    ctx.fillText(curPlayer.name, cx, cy - r*0.56);
   }
 
   // ── Countdown ── (đã bỏ đếm ngược roll 10s — chỉ còn đếm ngược mua đất 15s)
