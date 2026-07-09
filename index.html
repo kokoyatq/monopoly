@@ -192,7 +192,7 @@
   @keyframes cardPulse{0%,100%{box-shadow:0 3px 0 rgba(0,0,0,.06);}50%{box-shadow:0 0 0 4px rgba(255,92,92,.25);}}
   .dot{display:inline-block; width:20px; height:20px; border-radius:50%; margin-right:6px; vertical-align:middle;}
   .tag{display:inline-block; font-size:9.5px; padding:2px 7px; border-radius:999px; margin-left:4px; color:#fff; font-weight:800;}
-  .tag.weak{background:var(--bad);} .tag.mono{background:#e0680b;} .tag.jail{background:#3b6fd6;} .tag.shareholder-tag{background:#7b3ff2;}
+  .tag.weak{background:var(--bad);} .tag.mono{background:#e0680b;} .tag.jail{background:#3b6fd6;} .tag.shareholder-tag{background:#7b3ff2;} .tag.independent-tag{background:#059669;}
 
   button{cursor:pointer; border:none; border-radius:14px; padding:11px; font-size:14px; font-weight:800; font-family:'Baloo 2',sans-serif; transition:transform .1s, box-shadow .1s;}
   button:active{transform:translateY(2px);}
@@ -1932,7 +1932,18 @@ function renderPlayers(){
     if(p.jailTurns>0) tags+=`<span class="tag jail">🚔 Tù ${p.jailTurns}</span>`;
     let statusText="";
     if(p.status==="eliminated") statusText=" (Đã bị loại)";
-    div.innerHTML=`<span class="dot" style="background:${p.color}; display:inline-flex; align-items:center; justify-content:center; overflow:hidden;"><img src="./assets/token-${p.id}.png" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;"/></span><b>${p.name}</b>${statusText} ${tags}<br/>
+    // Dòng trạng thái sở hữu: Độc lập / Cổ đông X% của <tên chủ> — dùng đúng công thức equity
+    // đã tính lúc M&A (shareholderEquity) và giữ nguyên style .tag.shareholder-tag đã có sẵn
+    // trong CSS (định nghĩa ở trên) nhưng trước giờ chưa được dùng tới ở đâu cả.
+    let ownershipTag="";
+    if(p.status==="shareholder"){
+      const ownerName = state.players[p.shareholderOf]?.name || "?";
+      const pct = Math.round((p.shareholderEquity||0)*100);
+      ownershipTag = `<span class="tag shareholder-tag">📎 Cổ đông ${pct}% của ${ownerName}</span>`;
+    } else if(p.status==="active"){
+      ownershipTag = `<span class="tag independent-tag">🧍 Độc lập</span>`;
+    }
+    div.innerHTML=`<span class="dot" style="background:${p.color}; display:inline-flex; align-items:center; justify-content:center; overflow:hidden;"><img src="./assets/token-${p.id}.png" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;"/></span><b>${p.name}</b>${statusText} ${tags}${ownershipTag}<br/>
       💰 ${p.money.toLocaleString()}$ &nbsp; 🏠 ${p.properties.length} ô &nbsp; Σ ${totalAssets(state,p).toLocaleString()}$`;
     wrap.appendChild(div);
   });
