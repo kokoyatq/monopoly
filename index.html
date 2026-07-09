@@ -152,14 +152,15 @@
      (vẽ trên canvas, quanh tâm bàn) và bên trên khung log nhỏ (#boardLogPanel, bottom:15%).
      z-index thấp hơn diceOverlay(30)/eventBanner(40)/boardLogPanel(22) để không che các lớp đó
      lúc chúng hiện lên, nhưng cao hơn canvas để luôn thấy được ảnh khi bàn rảnh. */
-  /* Tính theo đúng toạ độ vẽ trong drawCenterLogo() (r=196.56px, cy=443px, BOARD_W=886px):
-     dòng "Xs" của vòng đếm mua đất kết thúc ở ~63.3% chiều cao bàn (khi ĐANG hiện đếm ngược —
-     trường hợp cần né nhất). #boardLogPanel neo "bottom:15%", cao tối đa ~9.3% (đã giảm
-     max-height ở trên) → mép trên của nó tệ nhất cũng ở ~75.7%. Đặt ảnh giữa 2 mốc này,
-     size vừa đủ để LUÔN nằm lọt trong khoảng trống, không đè lên bên nào. */
+  /* ĐÃ TO GẤP ĐÔI theo yêu cầu (26%→52%, max-width 220→440) — để có đủ chỗ, khối chữ phía trên
+     trong drawCenterLogo() đã được kéo lên cao hơn (xem các hệ số cy - r*... trong hàm đó).
+     Ảnh giờ chiếm nhiều chiều cao hơn hẳn nên mép dưới có thể áp sát/khuất nhẹ sau
+     #boardLogPanel lúc panel đó hiện log (panel nằm z-index cao hơn nên vẫn đọc được bình
+     thường, chỉ là đè lên đúng phần dưới cùng của ảnh) — đây là đánh đổi không gian không tránh
+     được khi ảnh to gấp đôi trong 1 bàn cờ kích thước cố định. */
   #teamPhoto{
-    position:absolute; top:70%; left:50%; transform:translate(-50%,-50%);
-    width:26%; max-width:220px; z-index:10; pointer-events:none;
+    position:absolute; top:66%; left:50%; transform:translate(-50%,-50%);
+    width:52%; max-width:440px; z-index:10; pointer-events:none;
     filter:drop-shadow(0 6px 14px rgba(0,0,0,.4));
   }
   #boardLogList{
@@ -1513,9 +1514,9 @@ function drawCenterLogo(){
   ctx.globalAlpha = 0.45;
   ctx.fillStyle = "#5c4324";
   ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*0.86);
+  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*1.00);
   ctx.font = `700 ${Math.max(10, r*0.095)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("NHÓM: MNL122", cx, cy - r*0.70);
+  ctx.fillText("NHÓM: MNL122", cx, cy - r*0.86);
 
   if(!state || !state.turnOrderLocked || state.gameEnded){
     // Chưa bắt đầu — chỉ hiện logo
@@ -1534,10 +1535,10 @@ function drawCenterLogo(){
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#2d2150";
     ctx.font = `700 ${Math.max(13, r*0.155)}px 'Baloo 2', sans-serif`;
-    ctx.fillText("LƯỢT CỦA", cx, cy - r*0.50);
+    ctx.fillText("LƯỢT CỦA", cx, cy - r*0.64);
     ctx.font = `800 ${Math.max(16, r*0.20)}px 'Baloo 2', sans-serif`;
     ctx.fillStyle = curPlayer.color;
-    ctx.fillText(curPlayer.name, cx, cy - r*0.28);
+    ctx.fillText(curPlayer.name, cx, cy - r*0.40);
   }
 
   // ── Countdown ── (đã bỏ đếm ngược roll 10s — chỉ còn đếm ngược mua đất 15s)
@@ -1552,7 +1553,7 @@ function drawCenterLogo(){
     const label  = "⏱ Mua đất";
     const color  = "#7b3ff2";
     const barR   = r * 0.55;
-    const barY   = cy + r * 0.10;
+    const barY   = cy - r * 0.14;
     const barH   = r * 0.10;
 
     // Label
