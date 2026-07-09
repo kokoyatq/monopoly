@@ -1497,11 +1497,32 @@ function drawCenterLogo(){
   ctx.save();
   ctx.textAlign="center"; ctx.textBaseline="middle";
 
-  // Tên game nhỏ phía trên (đẩy lên cao hơn nữa để nhường chỗ cho khung "Nhóm" bên dưới)
-  ctx.globalAlpha = 0.85;
+  // Tên game — to gấp đôi, đóng khung dạng pill giống khung "Nhóm", đặt giữa mép dưới hàng ô
+  // trên cùng (y = CW = r*1.786 tính từ tâm) và khung "Nhóm" (tâm ở cy - r*1.08, mép trên ở
+  // ~cy - r*1.21) → tâm khung tên game đặt ở cy - r*1.50 cho cân giữa khoảng trống đó.
+  ctx.globalAlpha = 1;
+  const titleLabel = "CUỘC CHƠI QUYỀN LỰC";
+  const titleFont  = `800 ${Math.max(20, r*0.22)}px 'Baloo 2', sans-serif`; // gấp đôi cỡ chữ cũ (r*0.11)
+  ctx.font = titleFont;
+  const titleTextW = ctx.measureText(titleLabel).width;
+  const titlePadX  = r*0.16;
+  const titleH     = Math.max(34, r*0.40);
+  const titleW     = titleTextW + titlePadX*2;
+  const titleCY    = cy - r*1.50;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(cx - titleW/2, titleCY - titleH/2, titleW, titleH, titleH/2);
+  ctx.fillStyle = "#fdf7ec";
+  ctx.fill();
+  ctx.lineWidth = Math.max(2.5, titleH*0.09);
+  ctx.strokeStyle = "#b5342a";
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.font = titleFont;
   ctx.fillStyle = "#b5342a";
-  ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("CUỘC CHƠI QUYỀN LỰC", cx, cy - r*1.32);
+  ctx.fillText(titleLabel, cx, titleCY);
 
   // Khung viền tên nhóm — dạng viên thuốc (pill) nổi bật: nền cam san hô, viền trắng, chữ trắng
   // viền đen, giống mẫu badge người dùng cung cấp.

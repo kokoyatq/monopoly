@@ -438,7 +438,7 @@ document.getElementById("btnAntiTrust").addEventListener("click", async ()=>{
 //   nguyên mốc cũ, nhưng afkWatchdog() ở index.html sẽ return ngay nếu state.paused
 //   (xem sửa ở index.html) — nghĩa là KHÔNG auto-skip-lượt, KHÔNG auto-mua-đất, KHÔNG
 //   auto-jail-wait trong lúc pause, dù đang ở bất kỳ giai đoạn nào của lượt chơi.
-// - Khi RESUME: cộng đúng khoảng thời gian đã pause (Date.now() - pausedAt) vào lại
+// - Khi RESUME: cộng đúng khoảng thời gian đã pause (nowSynced() - pausedAt) vào lại
 //   turnStartedAt và pendingBuyExpireAt (nếu có) — nhờ vậy người chơi được TRẢ LẠI
 //   chính xác số giây họ còn dư trước khi bị pause, không bị mất thời gian, không bị
 //   tính gian lận hết giờ ngay khi vừa resume.
@@ -452,10 +452,10 @@ document.getElementById("btnPauseGame").addEventListener("click", async ()=>{
   const newState = await mutateState(s=>{
     if(!s.paused){
       s.paused = true;
-      s.pausedAt = Date.now();
+      s.pausedAt = nowSynced();
       addLog(s, "⏸️ MC đã TẠM DỪNG game.");
     } else {
-      const pausedMs = Date.now() - (s.pausedAt || Date.now());
+      const pausedMs = nowSynced() - (s.pausedAt || nowSynced());
       if(s.turnStartedAt) s.turnStartedAt += pausedMs;
       if(s.pendingBuyExpireAt) s.pendingBuyExpireAt += pausedMs;
       s.paused = false;

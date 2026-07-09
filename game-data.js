@@ -8,7 +8,7 @@ const START_MONEY = 1500;
 const PASS_START_BONUS = 200;
 const TAX_AMOUNT = 100;
 const STATE_FEE = 100;
-const WEAK_THRESHOLD = 300;
+const WEAK_THRESHOLD = 500;
 const MONOPOLY_TILE_PCT = 0.4;
 const ANTITRUST_TAX = 300;
 const PRIORITY_FEE = 50;
@@ -60,7 +60,7 @@ const RAW_TILES = [
   ["Điện Lực","state",null,0,0],
   ["Nuôi tôm","property","NN",250,90],
   ["Vật liệu xây dựng","property","TN",250,90],
-  ["Cty công nghệ","property","TN",350,120],
+  ["Cty công nghệ","property","DV",350,120],
 ];
 const TOTAL_TILES = RAW_TILES.length; // 40
 const PROPERTY_TOTAL = RAW_TILES.filter(t=>t[1]==="property").length; // 34 — chỉ tính ô mua được, không tính Xuất phát/Thuế/Nhà nước/Tù
