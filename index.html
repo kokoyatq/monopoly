@@ -1495,26 +1495,13 @@ function drawCenterLogo(){
   const now = nowSynced();
 
   ctx.save();
-  // Trang trí la bàn mờ nhẹ
-  ctx.translate(cx, cy);
-  ctx.globalAlpha = 0.08;
-  ctx.strokeStyle = "#5c4324"; ctx.lineWidth = 2;
-  for(let i=0;i<4;i++){
-    ctx.save(); ctx.rotate((Math.PI/2)*i + Math.PI/4);
-    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(r*1.55,0); ctx.stroke();
-    ctx.restore();
-  }
-  ctx.beginPath(); ctx.arc(0,0,r*0.62,0,Math.PI*2); ctx.stroke();
-  ctx.restore();
-
-  ctx.save();
   ctx.textAlign="center"; ctx.textBaseline="middle";
 
   // Tên game nhỏ phía trên (đẩy lên cao hơn nữa để nhường chỗ cho khung "Nhóm" bên dưới)
-  ctx.globalAlpha = 0.8;
-  ctx.fillStyle = "#4a3319";
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = "#b5342a";
   ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
-  ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*1.32);
+  ctx.fillText("CUỘC CHƠI QUYỀN LỰC", cx, cy - r*1.32);
 
   // Khung viền tên nhóm — dạng viên thuốc (pill) nổi bật: nền cam san hô, viền trắng, chữ trắng
   // viền đen, giống mẫu badge người dùng cung cấp.
@@ -1546,10 +1533,7 @@ function drawCenterLogo(){
   ctx.fillText(groupLabel, cx, badgeCY);
 
   if(!state || !state.turnOrderLocked || state.gameEnded){
-    // Chưa bắt đầu — chỉ hiện logo
-    ctx.globalAlpha = 0.45;
-    ctx.font = `${r*0.38}px serif`;
-    ctx.fillText("🏛️", cx, cy);
+    // Chưa bắt đầu — không vẽ icon trang trí gì thêm, chỉ hiện tên game + khung nhóm ở trên
     ctx.restore();
     return;
   }
