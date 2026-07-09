@@ -228,10 +228,17 @@ function renderAlerts(){
     btn.onclick = async ()=>{
       await mutateState(s=>{
         const pl = s.players[p.id];
+        // Y HỆT lỗi đã sửa ở M&A / kick: nếu đúng lượt của người này thì phải đẩy lượt luôn,
+        // nếu không game sẽ treo cứng ở lượt của người vừa bị loại.
+        const wasCurrentTurn = s.turnOrderLocked && !s.gameEnded && s.turnOrder && s.turnOrder.length>0 && s.turnOrder[s.currentTurnPos]===pl.id;
         pl.status="eliminated";
         s.tiles.forEach(t=>{ if(t.owner===pl.id) t.owner=null; });
         pl.properties=[];
         addLog(s, `💀 ${pl.name} đã bị MC xác nhận LOẠI khỏi cuộc chơi.`);
+        if(wasCurrentTurn){
+          s.pendingBuyTile = null;
+          localAdvanceTurn(s);
+        }
       });
     };
     div.appendChild(btn);
@@ -470,8 +477,19 @@ document.getElementById("btnMAConfirm").addEventListener("click", async ()=>{
   const buyerId = parseInt(document.getElementById("maBuyer").value);
   const sellerId = parseInt(document.getElementById("maSeller").value);
   const price = parseInt(document.getElementById("maPrice").value);
-  if(buyerId===sellerId || isNaN(price)){ alert("Chọn 2 đội khác nhau và nhập giá hợp lệ."); return; }
-  
+  if(buyerId===sellerId || isNaN(price) || price <= 0){ alert("Chọn 2 đội khác nhau và nhập giá hợp lệ."); return; }
+
+  // Chặn TUYỆT ĐỐI trường hợp bên mua trả từ ĐÚNG BẰNG tới NHIỀU HƠN số tiền mặt đang có
+  // (price >= money) — vì âm tiền sẽ bị hệ thống coi là diện "phải loại" (xem renderAlerts()),
+  // và 0$ thì kẹt cứng ngay lượt kế tiếp (không đủ trả thuế/phí/tù...). Không có ngoại lệ: M&A
+  // KHÔNG được phép tạo ra tình huống nợ.
+  const buyerTemp = state.players[buyerId];
+  const currentMoney = Number(buyerTemp.money);
+  if(price >= currentMoney){
+    alert(`❌ ${buyerTemp.name} chỉ có ${currentMoney.toLocaleString()}$ — không được mua với giá ≥ số tiền này (sẽ khiến ${buyerTemp.name} còn 0$ hoặc âm tiền, bị coi là diện phải loại). Hãy nhập giá THẤP HƠN ${currentMoney.toLocaleString()}$.`);
+    return;
+  }
+
   // Chặn lỗi logic M&A khi đội bán chưa có tài sản đất (tránh bị chia cho 0 hoặc bị thâu tóm 100% ngược)
   const sellerTemp = state.players[sellerId];
   const transferValTemp = sellerTemp.properties.reduce((sum,idx)=> sum + RAW_TILES[idx][3], 0);
@@ -482,7 +500,14 @@ document.getElementById("btnMAConfirm").addEventListener("click", async ()=>{
 
   await mutateState(s=>{
     const buyer = s.players[buyerId], seller = s.players[sellerId];
-    
+
+    // QUAN TRỌNG: seller sắp bị đổi status khỏi "active" (thành "shareholder") — nếu đúng lúc
+    // đang là lượt của seller (seller chưa bấm roll) thì phải đẩy lượt sang người active kế tiếp
+    // NGAY TRONG transaction này, y hệt logic kickPlayer(), nếu không game sẽ bị treo cứng ở lượt
+    // của seller: nút Roll vẫn hiện "đang chờ seller" nhưng seller bấm roll sẽ bị Edge Function từ
+    // chối (status không còn "active") → không ai đẩy lượt được nữa.
+    const wasCurrentTurn = s.turnOrderLocked && !s.gameEnded && s.turnOrder && s.turnOrder.length>0 && s.turnOrder[s.currentTurnPos]===sellerId;
+
     // 1. Tính toán % cổ phần dựa trên giá trị đất (y hệt bên màn hình game)
     const transferVal = seller.properties.reduce((sum,idx)=> sum + RAW_TILES[idx][3], 0);
     const buyerCurVal = buyer.properties.reduce((sum,idx)=> sum + RAW_TILES[idx][3], 0);
@@ -503,6 +528,14 @@ document.getElementById("btnMAConfirm").addEventListener("click", async ()=>{
     seller.shareholderEquity = equity;
     
     addLog(s, `🤝 M&A: ${buyer.name} mua ${seller.name} giá ${price.toLocaleString()}$. ${seller.name} giữ ${Math.round(equity*100)}% cổ phần.`);
+
+    // 5. Nếu vừa "cướp lượt" của seller thì đẩy lượt sang đội active kế tiếp ngay, dùng đúng
+    // logic advanceTurn() thật ở server (kể cả case hết người active → tự kết thúc game).
+    if(wasCurrentTurn){
+      s.pendingBuyTile = null; // xoá quyết định mua đất còn treo của seller (nếu có)
+      localAdvanceTurn(s);
+      addLog(s, `⏭️ ${seller.name} vừa mất lượt do bị M&A ngay trong lượt của mình — chuyển lượt cho ${s.players[s.turnOrder[s.currentTurnPos]]?.name || "?"}.`);
+    }
   });
   document.getElementById("maPrice").value="";
 });
