@@ -1502,11 +1502,11 @@ function drawCenterLogo(){
   // ~cy - r*1.21) → tâm khung tên game đặt ở cy - r*1.50 cho cân giữa khoảng trống đó.
   ctx.globalAlpha = 1;
   const titleLabel = "CUỘC CHƠI QUYỀN LỰC";
-  const titleFont  = `800 ${Math.max(20, r*0.22)}px 'Baloo 2', sans-serif`; // gấp đôi cỡ chữ cũ (r*0.11)
+  const titleFont  = `800 ${Math.max(15, r*0.165)}px 'Baloo 2', sans-serif`; // gấp 1.5 lần cỡ chữ cũ (r*0.11)
   ctx.font = titleFont;
   const titleTextW = ctx.measureText(titleLabel).width;
   const titlePadX  = r*0.16;
-  const titleH     = Math.max(34, r*0.40);
+  const titleH     = Math.max(26, r*0.30);
   const titleW     = titleTextW + titlePadX*2;
   const titleCY    = cy - r*1.50;
 
@@ -1522,7 +1522,7 @@ function drawCenterLogo(){
 
   ctx.font = titleFont;
   ctx.fillStyle = "#b5342a";
-  ctx.fillText(titleLabel, cx, titleCY);
+  ctx.fillText(titleLabel, cx, titleCY + titleH*0.08);
 
   // Khung viền tên nhóm — dạng viên thuốc (pill) nổi bật: nền cam san hô, viền trắng, chữ trắng
   // viền đen, giống mẫu badge người dùng cung cấp.
@@ -1549,9 +1549,9 @@ function drawCenterLogo(){
   ctx.lineJoin = "round";
   ctx.lineWidth = Math.max(2, r*0.022);
   ctx.strokeStyle = "#3b2418";
-  ctx.strokeText(groupLabel, cx, badgeCY);
+  ctx.strokeText(groupLabel, cx, badgeCY + badgeH*0.08);
   ctx.fillStyle = "#ffffff";
-  ctx.fillText(groupLabel, cx, badgeCY);
+  ctx.fillText(groupLabel, cx, badgeCY + badgeH*0.08);
 
   if(!state || !state.turnOrderLocked || state.gameEnded){
     // Chưa bắt đầu — không vẽ icon trang trí gì thêm, chỉ hiện tên game + khung nhóm ở trên
