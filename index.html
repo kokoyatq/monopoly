@@ -1511,8 +1511,8 @@ function drawCenterLogo(){
   ctx.textAlign="center"; ctx.textBaseline="middle";
 
   // Tên game nhỏ phía trên (đẩy lên cao hơn nữa để nhường chỗ cho khung "Nhóm" bên dưới)
-  ctx.globalAlpha = 0.45;
-  ctx.fillStyle = "#5c4324";
+  ctx.globalAlpha = 0.8;
+  ctx.fillStyle = "#4a3319";
   ctx.font = `800 ${Math.max(11, r*0.11)}px 'Baloo 2', sans-serif`;
   ctx.fillText("TỪ CẠNH TRANH ĐẾN ĐỘC QUYỀN", cx, cy - r*1.32);
 
@@ -1526,7 +1526,7 @@ function drawCenterLogo(){
   const badgePadX  = r*0.18;
   const badgeH     = Math.max(24, r*0.26);
   const badgeW     = badgeTextW + badgePadX*2;
-  const badgeCY    = cy - r*1.05;
+  const badgeCY    = cy - r*1.14;
 
   ctx.save();
   ctx.beginPath();
