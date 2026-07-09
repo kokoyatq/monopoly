@@ -86,11 +86,44 @@ async function mutateState(mutatorFn, maxRetries = 8){
    Dùng chung cho cả index.html LẪN admin.html vì cả 2 đều load file này.
    ============================================================ */
 let clockOffsetMs = 0; // serverNow ≈ Date.now() + clockOffsetMs
+let clockOffsetInitialized = false; // false → chưa đo lần nào, set thẳng luôn để có số ban đầu ngay
+
+// ĐANG ĐẾM NGƯỢC MUA ĐẤT (pendingBuyTile khác null) → KHOÁ clockOffsetMs, không cho
+// syncClockOffset() (đo định kỳ 30s qua header Date) chỉnh lại giữa chừng nữa. Lý do: bản thân
+// mốc pendingBuyExpireAt đã do SERVER chấm chuẩn (Date.now() thật), và ngay lúc cửa 15s bắt đầu
+// ta đã có 1 mẫu đo cực chính xác (mili-giây) từ chính response của gameAction("start-buy-timer")
+// rồi — không cần đo thêm. Nếu vẫn cho phép đo lại giữa chừng, 1 lần đo (dù đã làm mượt EMA) vẫn
+// có thể nhích clockOffsetMs vài trăm ms đúng lúc đang đếm, khiến remain hiển thị nhảy lên rồi
+// "đuổi" xuống lại — chính là hiện tượng giật cục dù hạn gốc trên server không hề đổi.
+// index.html gọi setClockSyncFrozen(true/false) mỗi khi state.pendingBuyTile đổi.
+let clockSyncFrozen = false;
+function setClockSyncFrozen(frozen){ clockSyncFrozen = !!frozen; }
 
 // Lấy "giờ hiện tại" đã hiệu chỉnh theo server — dùng thay cho Date.now()
 // ở MỌI chỗ liên quan tới pendingBuyExpireAt / turnStartedAt / gameStartedAt / watchdog.
 function nowSynced(){
   return Date.now() + clockOffsetMs;
+}
+
+// Áp 1 mẫu đo lệch giờ mới vào clockOffsetMs.
+//   mode="exact"   → dùng riêng cho mẫu serverTime lấy từ CHÍNH LÚC action "start-buy-timer" trả
+//                    lời — tức đúng thời điểm cửa 15s bắt đầu. Đây là mẫu quan trọng nhất vì cả
+//                    15s tiếp theo bị KHOÁ (clockSyncFrozen), không còn cơ hội chỉnh lại nữa, nên
+//                    ghi đè THẲNG (không pha trộn EMA) để hiển thị đúng ngay từ giây đầu tiên,
+//                    không lệch dư vài trăm ms do offset cũ kéo lại.
+//   mode="precise" → mẫu serverTime (mili-giây) từ CÁC gameAction() khác (roll, buy-yes...) —
+//                    đáng tin nhưng không phải lúc nào cũng rơi đúng lúc quan trọng, nên vẫn pha
+//                    trộn EMA alpha lớn thay vì ghi đè thẳng, phòng 1 mẫu bất thường (mạng giật).
+//   mode="coarse"  → mẫu từ header HTTP "Date" (chỉ chính xác tới GIÂY, làm tròn ngẫu nhiên ±1s
+//                    dù mạng ổn định) — pha trộn EMA alpha nhỏ, chỉ để trôi dần về đúng.
+function applyClockSample(sampleOffsetMs, mode){
+  if(!clockOffsetInitialized || mode === "exact"){
+    clockOffsetMs = sampleOffsetMs;
+    clockOffsetInitialized = true;
+    return;
+  }
+  const alpha = mode === "precise" ? 0.5 : 0.15;
+  clockOffsetMs = clockOffsetMs*(1-alpha) + sampleOffsetMs*alpha;
 }
 
 // Đo lệch giờ bằng 1 request nhẹ tới chính Supabase REST endpoint, đọc header
@@ -108,6 +141,7 @@ function nowSynced(){
 // KHÔNG được cache bằng `cache:"no-store"` + thêm tham số ngẫu nhiên vào URL
 // mỗi lần gọi (chặn cả cache theo URL của CDN lẫn của trình duyệt).
 async function syncClockOffset(){
+  if(clockSyncFrozen) return; // đang đếm ngược mua đất — không đo/chỉnh offset giữa chừng
   try{
     const t0 = Date.now();
     const res = await fetch(`${SUPABASE_URL}/rest/v1/?_ts=${t0}_${Math.random()}`, {
@@ -124,7 +158,7 @@ async function syncClockOffset(){
       const serverNowAtT1 = new Date(dateHeader).getTime();
       // Ước lượng giờ server tại thời điểm t1 (đã bù nửa round-trip)
       const estServerNow = serverNowAtT1 + rtt/2;
-      clockOffsetMs = estServerNow - t1;
+      applyClockSample(estServerNow - t1, "coarse"); // mẫu thô (chỉ chính xác tới giây) → làm mượt qua EMA
     }
   }catch(e){ console.error("[clock-sync] Không đo được lệch giờ server (bỏ qua, dùng offset cũ):", e); }
 }
@@ -145,7 +179,15 @@ function subscribeToChanges(onChange){
 
 // Gọi Edge Function cho mọi action có liên quan đến lượt chơi (roll, jail, mua đất...).
 // Server tự đọc state mới nhất, validate đúng lượt + đủ điều kiện, tính toán, rồi ghi đè 1 lần.
+//
+// QUAN TRỌNG — nếu Edge Function (roll-dice) có trả kèm field "serverTime" (số mili-giây,
+// tức Date.now() lấy TRÊN SERVER ngay lúc xử lý request — xem ghi chú bên dưới hàm này) thì
+// đây là mẫu đo lệch giờ CHÍNH XÁC NHẤT có thể có: không bị làm tròn giây như header "Date",
+// và lại rơi đúng vào những thời điểm quan trọng nhất — ngay trước lúc cửa đếm ngược mua đất
+// 15s bắt đầu (roll trúng ô đất trống → mở modal mua). Không có thì bỏ qua, vẫn còn
+// syncClockOffset() (header Date, đo định kỳ) làm phương án dự phòng.
 async function gameAction(roomId, playerId, action, extra) {
+  const t0 = Date.now();
   const res = await fetch(
     `${SUPABASE_URL}/functions/v1/roll-dice`,
     {
@@ -157,8 +199,17 @@ async function gameAction(roomId, playerId, action, extra) {
       body: JSON.stringify({ roomId, playerId, action, ...(extra || {}) }),
     }
   );
+  const t1 = Date.now();
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Lỗi server");
+  if(typeof data.serverTime === "number"){
+    const rtt = t1 - t0;
+    const estServerNow = data.serverTime + rtt/2; // bù nửa round-trip cho lúc response về tới client
+    // "start-buy-timer" = đúng thời điểm cửa 15s bắt đầu, và ngay sau đó bị khoá (clockSyncFrozen)
+    // không còn cơ hội chỉnh lại → ghi đè thẳng (exact) để không bị offset cũ kéo lệch dù chỉ vài
+    // trăm ms. Các action khác (roll, buy-yes...) vẫn dùng "precise" (EMA alpha lớn) như cũ.
+    applyClockSample(estServerNow - t1, action === "start-buy-timer" ? "exact" : "precise");
+  }
   return data;
 }
 

@@ -1768,6 +1768,12 @@ setInterval(()=>{
   afkWatchdog();
   const now = nowSynced();
 
+  // Khoá đồng hồ đồng bộ trong suốt lúc đang chờ quyết định mua đất — xem giải thích chi tiết
+  // ở setClockSyncFrozen()/syncClockOffset() trong supabase-client.js. Chỉ mở khoá lại sau khi
+  // ô mua đất đã được xử lý xong (pendingBuyTile về null), để lần đếm ngược TIẾP THEO vẫn được
+  // đồng bộ lại bình thường trước khi nó bắt đầu.
+  setClockSyncFrozen(state.pendingBuyTile !== null && state.pendingBuyTile !== undefined);
+
   // ── Thanh đếm ngược mua đất (15s) — chỉ để HIỂN THỊ. Việc tự thuê (bỏ qua mua) khi hết giờ giờ do
   //    afkWatchdog() ở trên đảm nhiệm (chạy trên mọi client), không còn phụ thuộc riêng máy
   //    của người đang tới lượt nữa. ──
