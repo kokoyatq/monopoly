@@ -118,12 +118,10 @@
   #diceSumBadge.show{display:block;}
 
   #weakBanner{
-    position:absolute; top:10px; left:50%; transform:translateX(-50%);
     background:linear-gradient(135deg,#ff5c5c,#c0392b);
-    color:#fff; font-family:'Baloo 2',sans-serif; font-weight:800; font-size:13px;
-    padding:8px 18px; border-radius:999px; z-index:25; pointer-events:none;
-    box-shadow:0 4px 16px rgba(0,0,0,.35); white-space:nowrap;
-    display:none; max-width:90%; text-align:center;
+    color:#fff; font-family:'Baloo 2',sans-serif; font-weight:800; font-size:12.5px;
+    padding:8px 14px; border-radius:14px; box-shadow:0 4px 16px rgba(0,0,0,.35);
+    display:none; text-align:center; line-height:1.35;
     animation:weakPulse 2s infinite;
   }
   #weakBanner.show{display:block;}
@@ -150,8 +148,22 @@
     background:rgba(20,10,45,.62); border-radius:12px; padding:6px 12px;
     box-shadow:0 4px 14px rgba(0,0,0,.3), inset 0 0 0 1px rgba(255,255,255,.08);
   }
+  /* Ảnh nhóm — đặt đúng khoảng trống giữa bàn cờ: dưới chữ "LƯỢT CỦA..."/vòng đếm ngược
+     (vẽ trên canvas, quanh tâm bàn) và bên trên khung log nhỏ (#boardLogPanel, bottom:15%).
+     z-index thấp hơn diceOverlay(30)/eventBanner(40)/boardLogPanel(22) để không che các lớp đó
+     lúc chúng hiện lên, nhưng cao hơn canvas để luôn thấy được ảnh khi bàn rảnh. */
+  /* Tính theo đúng toạ độ vẽ trong drawCenterLogo() (r=196.56px, cy=443px, BOARD_W=886px):
+     dòng "Xs" của vòng đếm mua đất kết thúc ở ~63.3% chiều cao bàn (khi ĐANG hiện đếm ngược —
+     trường hợp cần né nhất). #boardLogPanel neo "bottom:15%", cao tối đa ~9.3% (đã giảm
+     max-height ở trên) → mép trên của nó tệ nhất cũng ở ~75.7%. Đặt ảnh giữa 2 mốc này,
+     size vừa đủ để LUÔN nằm lọt trong khoảng trống, không đè lên bên nào. */
+  #teamPhoto{
+    position:absolute; top:70%; left:50%; transform:translate(-50%,-50%);
+    width:26%; max-width:220px; z-index:10; pointer-events:none;
+    filter:drop-shadow(0 6px 14px rgba(0,0,0,.4));
+  }
   #boardLogList{
-    display:flex; flex-direction:column; gap:3px; max-height:100px; overflow:hidden;
+    display:flex; flex-direction:column; gap:3px; max-height:70px; overflow:hidden;
     font-family:'Nunito',sans-serif; font-size:10px; font-weight:700; color:#fff;
   }
   #boardLogList p{
@@ -271,11 +283,12 @@
     <canvas id="boardCanvas" width="886" height="886"></canvas>
     <div id="diceOverlay"><div class="dice-stage" id="diceStage"></div></div>
     <div id="diceSumBadge"></div>
-    <div id="weakBanner"></div>
     <div id="eventBanner"></div>
     <div id="boardLogPanel"><div id="boardLogList"></div></div>
+    <img id="teamPhoto" src="team-photo.png" alt="Nhóm MNL122"/>
   </div>
   <div id="boardRightPanel">
+    <div id="weakBanner"></div>
     <div id="phaseBar">
       <div class="timer-big" id="timer">00:00</div>
       <span>Giai đoạn: <b id="phaseName">-</b></span>
