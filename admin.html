@@ -534,12 +534,46 @@ document.getElementById("btnMAConfirm").addEventListener("click", async ()=>{
     buyer.money -= price;
     seller.money += price;
     
-    // 4. Gắn trạng thái cổ đông & tỷ lệ %
+    // 4. Gắn trạng thái cổ đông & tỷ lệ % cho seller
     seller.status = "shareholder";
     seller.shareholderOf = buyer.id;
-    seller.shareholderEquity = equity;
+
+    // 4b. LÀM PHẲNG CHUỖI CỔ ĐÔNG: nếu seller đang có sẵn cổ đông riêng của mình (ví dụ A đã
+    // là cổ đông của seller từ một lần M&A trước), thì khi seller giờ lại bị buyer thâu tóm,
+    // A KHÔNG được để trỏ vào seller nữa (vì seller không còn trực tiếp thu tiền thuê) — phải
+    // chuyển A trỏ THẲNG sang buyer, với tỷ lệ % = tỷ lệ cũ của A × tỷ lệ mới của seller.
+    // Nhờ vậy A vẫn tiếp tục nhận cổ tức đều đặn dù chủ sở hữu cuối cùng đã đổi qua nhiều lớp,
+    // và index.ts (nơi chia tiền thuê) không cần sửa gì vì mọi cổ đông luôn trỏ thẳng 1 tầng.
+    const subShareholders = s.players.filter(p=>p.status==="shareholder" && p.shareholderOf===seller.id);
+    let reassignedShare = 0; // tổng % (trên phần thu nhập của seller) đã cam kết cho các cổ đông cũ
+    subShareholders.forEach(sp=>{
+      const oldEq = sp.shareholderEquity || 0;
+      const newEq = oldEq * equity;
+      sp.shareholderOf = buyer.id;
+      sp.shareholderEquity = newEq;
+      reassignedShare += oldEq;
+      addLog(s, `🔗 ${sp.name} (cổ đông cũ của ${seller.name}) được chuyển thẳng sang làm cổ đông ${Math.round(newEq*100)}% của ${buyer.name}.`);
+    });
+    // Phần seller được giữ lại là phần equity mới TRỪ ĐI phần đã cam kết chia cho cổ đông cũ
+    seller.shareholderEquity = equity * (1 - reassignedShare);
     
-    addLog(s, `🤝 M&A: ${buyer.name} mua ${seller.name} giá ${price.toLocaleString()}$. ${seller.name} giữ ${Math.round(equity*100)}% cổ phần.`);
+    addLog(s, `🤝 M&A: ${buyer.name} mua ${seller.name} giá ${price.toLocaleString()}$. ${seller.name} giữ ${Math.round(seller.shareholderEquity*100)}% cổ phần trực tiếp của ${buyer.name}.`);
+
+    // 4c. PHA LOÃNG CỔ ĐÔNG SẴN CÓ CỦA BUYER: buyer vừa "phình to" thêm transferVal nhờ thâu tóm
+    // seller — nếu buyer đã có cổ đông riêng từ trước (shareholderOf===buyer.id, không liên quan
+    // gì tới thương vụ này), % của họ phải giảm tương ứng theo tỷ trọng buyerCurVal/totalAfter,
+    // đúng bằng (1 - equity) vì equity = transferVal/totalAfter. Nếu không pha loãng, cổ đông cũ
+    // của buyer sẽ vô tình được "ăn ké" luôn cả phần tài sản mới mà họ không hề góp vào.
+    const dilutionRatio = totalAfter === 0 ? 1 : (buyerCurVal / totalAfter); // = 1 - equity
+    const justReassignedIds = new Set([seller.id, ...subShareholders.map(sp=>sp.id)]); // vừa nhận % mới ở bước 4/4b, không phải cổ đông "cũ" của buyer, không được đụng vào ở đây
+    if (dilutionRatio < 1) {
+      const buyerExistingShareholders = s.players.filter(p=>p.status==="shareholder" && p.shareholderOf===buyer.id && !justReassignedIds.has(p.id));
+      buyerExistingShareholders.forEach(sp=>{
+        const oldEq = sp.shareholderEquity || 0;
+        sp.shareholderEquity = oldEq * dilutionRatio;
+        addLog(s, `📉 Cổ phần của ${sp.name} tại ${buyer.name} bị pha loãng từ ${Math.round(oldEq*100)}% xuống ${Math.round(sp.shareholderEquity*100)}% (do ${buyer.name} vừa thâu tóm thêm ${seller.name}).`);
+      });
+    }
 
     // 5. Nếu vừa "cướp lượt" của seller thì đẩy lượt sang đội active kế tiếp ngay, dùng đúng
     // logic advanceTurn() thật ở server (kể cả case hết người active → tự kết thúc game).
