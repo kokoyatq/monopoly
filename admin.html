@@ -56,9 +56,10 @@
 </div>
 
 <div class="panel" id="priorityPanel" style="display:none;">
-  <h3>🥇 Ưu tiên đi trước (chỉ 1 đội, 1 lần duy nhất, 50$)</h3>
+  <h3>🥇 Ưu tiên đi trước (chỉ 1 đội, 1 lần duy nhất — đấu giá ngoài đời thực)</h3>
   <div class="row-flex">
     <select id="prioritySelect"><option value="">-- Không đội nào --</option></select>
+    <input type="number" id="priorityAmount" placeholder="Số tiền thắng đấu giá ($)" min="0" step="1"/>
     <button class="btn-main" id="btnConfirmPriority">Xác nhận</button>
   </div>
 </div>
@@ -392,20 +393,26 @@ document.getElementById("btnRandomOrder").addEventListener("click", async ()=>{
     // CHƯA khóa & CHƯA bắt đầu game ở đây — chờ MC hỏi xong bước ưu tiên (btnConfirmPriority)
     // mới thực sự khóa thứ tự + bắt đầu tính giờ. Tránh tình trạng bấm Random là game chạy luôn.
     addLog(s, `🎲 MC đã random thứ tự đi (${joined.length} đội): ${order.map(id=>s.players[id].name).join(" → ")}`);
-    addLog(s, `Hỏi: có đội nào muốn nộp 50$ để đi trước không?`);
+    addLog(s, `Hỏi: có đội nào thắng đấu giá vị trí đi trước không?`);
   });
 });
 
 document.getElementById("btnConfirmPriority").addEventListener("click", async ()=>{
   const pid = document.getElementById("prioritySelect").value;
+  const amountRaw = document.getElementById("priorityAmount").value;
+  const amount = parseInt(amountRaw);
+  if(pid!=="" && (isNaN(amount) || amount < 0)){
+    alert("Vui lòng nhập số tiền đấu giá hợp lệ (>= 0).");
+    return;
+  }
   await mutateState(s=>{
     if(pid!==""){
       const id = parseInt(pid);
-      s.players[id].money -= PRIORITY_FEE;
+      s.players[id].money -= amount;
       s.turnOrder = [id, ...s.turnOrder.filter(x=>x!==id)];
-      addLog(s, `🥇 ${s.players[id].name} nộp ${PRIORITY_FEE}$ để giành quyền đi trước.`);
+      addLog(s, `🥇 ${s.players[id].name} thắng đấu giá, nộp ${amount}$ để giành quyền đi trước.`);
     } else {
-      addLog(s, `Không đội nào nộp phí ưu tiên — giữ thứ tự random.`);
+      addLog(s, `Không đội nào giành quyền ưu tiên — giữ thứ tự random.`);
     }
     s.priorityUsed = true;
     s.currentTurnPos = 0;
