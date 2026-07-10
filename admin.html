@@ -200,6 +200,11 @@ function renderPhaseInfo(){
         : (state.turnOrder && state.turnOrder.length>0 ? `&nbsp; | &nbsp; <i>⏳ Đang chờ MC xác nhận ưu tiên trước khi bắt đầu...</i>` : "")}
   `;
   document.getElementById("btnRandomOrder").disabled = state.turnOrderLocked || (state.turnOrder && state.turnOrder.length>0);
+  const btnAntiTrust = document.getElementById("btnAntiTrust");
+  btnAntiTrust.disabled = !!state.antiTrustApplied;
+  btnAntiTrust.textContent = state.antiTrustApplied
+    ? "⚖️ Đã áp thuế chống độc quyền (GĐ4)"
+    : "⚖️ Áp thuế chống độc quyền (GĐ4)";
 }
 
 function renderPriorityPanel(){
@@ -435,8 +440,10 @@ document.getElementById("btnNextPhase").addEventListener("click", async ()=>{
 
 document.getElementById("btnAntiTrust").addEventListener("click", async ()=>{
   await mutateState(s=>{
+    if(s.antiTrustApplied){ addLog(s,"Thuế chống độc quyền đã được áp dụng rồi, chỉ áp 1 lần/ván."); return; }
     const monoPlayers = s.players.filter(p=>isMonopoly(s,p));
     if(monoPlayers.length===0){ addLog(s,"Không có đội độc quyền nào để áp thuế."); return; }
+    s.antiTrustApplied = true;
     monoPlayers.forEach(p=>{ p.money -= ANTITRUST_TAX; addLog(s, `⚖️ ${p.name} nộp thuế chống độc quyền ${ANTITRUST_TAX}$.`); });
     const poorest = s.players
       .filter(p=>p.status==="active" && !isMonopoly(s,p))
