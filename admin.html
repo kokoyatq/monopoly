@@ -439,22 +439,40 @@ document.getElementById("btnNextPhase").addEventListener("click", async ()=>{
 });
 
 document.getElementById("btnAntiTrust").addEventListener("click", async ()=>{
-  await mutateState(s=>{
-    if(s.antiTrustApplied){ addLog(s,"Thuế chống độc quyền đã được áp dụng rồi, chỉ áp 1 lần/ván."); return; }
-    const monoPlayers = s.players.filter(p=>isMonopoly(s,p));
-    if(monoPlayers.length===0){ addLog(s,"Không có đội độc quyền nào để áp thuế."); return; }
-    s.antiTrustApplied = true;
-    monoPlayers.forEach(p=>{ p.money -= ANTITRUST_TAX; addLog(s, `⚖️ ${p.name} nộp thuế chống độc quyền ${ANTITRUST_TAX}$.`); });
-    const poorest = s.players
-      .filter(p=>p.status==="active" && !isMonopoly(s,p))
-      .sort((a,b)=>totalAssets(s,a)-totalAssets(s,b))[0];
-    if(poorest){
-      poorest.money += ANTITRUST_SUPPORT;
-      addLog(s, `💚 ${poorest.name} nhận hỗ trợ ${ANTITRUST_SUPPORT.toLocaleString()}$.`);
-    } else {
-      addLog(s, "Không có đội nào đủ điều kiện nhận hỗ trợ (không độc quyền).");
-    }
-  });
+  const btnAT = document.getElementById("btnAntiTrust");
+  if(btnAT.disabled) return; // chặn double-click / bấm dồn dập
+  btnAT.disabled = true;
+  const originalLabel = btnAT.textContent;
+  btnAT.textContent = "⏳ Đang xử lý...";
+  try {
+    await mutateState(s=>{
+      if(s.antiTrustApplied){ addLog(s,"Thuế chống độc quyền đã được áp dụng rồi, chỉ áp 1 lần/ván."); return; }
+      const monoPlayers = s.players.filter(p=>isMonopoly(s,p));
+      if(monoPlayers.length===0){ addLog(s,"Không có đội độc quyền nào để áp thuế."); return; }
+      s.antiTrustApplied = true;
+      monoPlayers.forEach(p=>{ p.money -= ANTITRUST_TAX; addLog(s, `⚖️ ${p.name} nộp thuế chống độc quyền ${ANTITRUST_TAX}$.`); });
+      const poorest = s.players
+        .filter(p=>p.status==="active" && !isMonopoly(s,p))
+        .sort((a,b)=>totalAssets(s,a)-totalAssets(s,b))[0];
+      if(poorest){
+        poorest.money += ANTITRUST_SUPPORT;
+        addLog(s, `💚 ${poorest.name} nhận hỗ trợ ${ANTITRUST_SUPPORT.toLocaleString()}$.`);
+      } else {
+        addLog(s, "Không có đội nào đủ điều kiện nhận hỗ trợ (không độc quyền).");
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    alert("Lỗi kết nối khi áp thuế, vui lòng thử lại.");
+  } finally {
+    // Luôn đồng bộ lại nút theo state THẬT SỰ đã lưu được (không phải theo việc
+    // click có thành công hay không) — nếu server không nhận được thay đổi
+    // (mất mạng/lag) thì antiTrustApplied vẫn là false → nút mở lại để bấm tiếp.
+    btnAT.disabled = !!state.antiTrustApplied;
+    btnAT.textContent = state.antiTrustApplied
+      ? "⚖️ Đã áp thuế chống độc quyền (GĐ4)"
+      : originalLabel;
+  }
 });
 
 // ─── Tạm dừng / Tiếp tục game ───
