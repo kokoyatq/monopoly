@@ -2284,18 +2284,68 @@ document.getElementById("btnJailRoll").addEventListener("click", async ()=>{
 });
 document.getElementById("btnJailPay").addEventListener("click", async ()=>{
   if(sequenceLocked) return;
-  sequenceLocked=true; updateRollButton();
-  try{
-    const result = await gameAction(GAME_ID, myPlayerId, "jail-pay");
-    state = result.state;
-    if(state.lastEventId) lastSeenEventId = state.lastEventId;
-    queueEventBanners(result.events);
-  } catch(err){
-    alert("Lỗi server: " + err.message);
-  }
-  sequenceLocked=false;
   jailModal.classList.remove("show");
-  renderAll();
+  sequenceLocked=true; updateRollButton();
+  const oldPos = state.players[myPlayerId].position;
+
+  let result;
+  try{
+    result = await gameAction(GAME_ID, myPlayerId, "jail-pay");
+  } catch(err){
+    sequenceLocked=false; updateRollButton();
+    alert("Lỗi server: " + err.message);
+    return;
+  }
+
+  // Server giờ trả kèm dice + vị trí mới (đúng luật: trả tiền xong roll và đi luôn),
+  // nên xử lý y hệt luồng roll bình thường / jail-roll đổ đôi.
+  const [d1p,d2p] = result.dice;
+  document.getElementById("diceResult").textContent = `🎲${d1p} 🎲${d2p} = ${d1p+d2p}`;
+  state = result.state;
+  if(state.lastEventId) lastSeenEventId = state.lastEventId;
+  const newPos = state.players[myPlayerId].position;
+
+  const payWatchdog = setTimeout(()=>{
+    if(sequenceLocked){ sequenceLocked=false; renderAll(); }
+  }, 8000);
+  try{
+    showDiceOnBoard(d1p, d2p, ()=>{
+      try{
+        animateTokenMove(myPlayerId, oldPos, newPos, ()=>{
+          clearTimeout(payWatchdog);
+          sequenceLocked=false;
+          renderAll();
+          queueEventBanners(result.events);
+          applyBoardFx(result.events, newPos);
+          const landedTile = state.tiles[newPos];
+          if(!isDisplayMode){
+            if(state.pendingBuyTile !== undefined && state.pendingBuyTile !== null){
+              window.__pendingBuy = { idx: state.pendingBuyTile };
+              startBuyTimerIfNeeded(state.pendingBuyTile);
+              openBuyModal(state.pendingBuyTile);
+            } else if(landedTile && landedTile.type === "tax"){
+              openTaxModal();
+            } else if(landedTile && landedTile.type === "state"){
+              openStateModal();
+            } else if(landedTile && landedTile.type === "property" && landedTile.owner !== null && landedTile.owner !== myPlayerId){
+              const rent = (landedTile.rent||0) * (landedTile.rentMultiplier||1);
+              openRentModal(landedTile.name, state.players[landedTile.owner].name, rent);
+            }
+          }
+        });
+      }catch(e){
+        console.error("animateTokenMove lỗi:", e);
+        clearTimeout(payWatchdog);
+        sequenceLocked=false;
+        renderAll();
+      }
+    });
+  }catch(e){
+    console.error("showDiceOnBoard lỗi:", e);
+    clearTimeout(payWatchdog);
+    sequenceLocked=false;
+    renderAll();
+  }
 });
 document.getElementById("btnJailWait").addEventListener("click", async ()=>{
   if(sequenceLocked) return;
