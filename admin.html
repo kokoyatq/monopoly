@@ -437,11 +437,16 @@ document.getElementById("btnAntiTrust").addEventListener("click", async ()=>{
   await mutateState(s=>{
     const monoPlayers = s.players.filter(p=>isMonopoly(s,p));
     if(monoPlayers.length===0){ addLog(s,"Không có đội độc quyền nào để áp thuế."); return; }
-    let totalTax=0;
-    monoPlayers.forEach(p=>{ p.money -= ANTITRUST_TAX; totalTax+=ANTITRUST_TAX; addLog(s, `⚖️ ${p.name} nộp thuế chống độc quyền ${ANTITRUST_TAX}$.`); });
-    const poorest = s.players.filter(p=>p.status==="active").sort((a,b)=>totalAssets(s,a)-totalAssets(s,b)).slice(0,2);
-    const share = Math.floor(totalTax/Math.max(poorest.length,1));
-    poorest.forEach(p=>{ p.money+=share; addLog(s, `💚 ${p.name} nhận hỗ trợ ${share.toLocaleString()}$.`); });
+    monoPlayers.forEach(p=>{ p.money -= ANTITRUST_TAX; addLog(s, `⚖️ ${p.name} nộp thuế chống độc quyền ${ANTITRUST_TAX}$.`); });
+    const poorest = s.players
+      .filter(p=>p.status==="active" && !isMonopoly(s,p))
+      .sort((a,b)=>totalAssets(s,a)-totalAssets(s,b))[0];
+    if(poorest){
+      poorest.money += ANTITRUST_SUPPORT;
+      addLog(s, `💚 ${poorest.name} nhận hỗ trợ ${ANTITRUST_SUPPORT.toLocaleString()}$.`);
+    } else {
+      addLog(s, "Không có đội nào đủ điều kiện nhận hỗ trợ (không độc quyền).");
+    }
   });
 });
 

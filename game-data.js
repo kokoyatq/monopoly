@@ -11,6 +11,7 @@ const STATE_FEE = 100;
 const WEAK_THRESHOLD = 500;
 const MONOPOLY_TILE_PCT = 0.4;
 const ANTITRUST_TAX = 300;
+const ANTITRUST_SUPPORT = 200;
 const PRIORITY_FEE = 50;
 const PHASE_NAMES = [
   "1 - Cạnh tranh tự do",
